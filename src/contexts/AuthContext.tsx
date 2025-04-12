@@ -72,6 +72,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ]);
 
         if (profileError) throw profileError;
+        
+        // Wait a moment to ensure the user record is committed to the database
+        // before any other operations that depend on it (like notification settings)
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     } catch (error) {
       setError(error as Error);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bell, Moon, Volume2, Globe, Shield, Key } from 'lucide-react';
+import { Bell, Moon, Volume2, Globe, Shield, Key, Mail } from 'lucide-react';
 import Button from '../components/ui/Button';
 import { getNotificationSettings, updateNotificationSettings } from '../lib/supabase';
 import { Database } from '../types/supabase';

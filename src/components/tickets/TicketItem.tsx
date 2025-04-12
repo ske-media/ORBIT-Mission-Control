@@ -1,23 +1,30 @@
 import React from 'react';
 import { Clock, UserCircle2 } from 'lucide-react';
-import { Ticket, TicketPriority } from '../../types';
+import { TicketPriority } from '../../types';
 import Badge from '../ui/Badge';
 import Avatar from '../ui/Avatar';
-import { getUserById, getCurrentUser } from '../../data/mockData';
+import { Database } from '../../types/supabase';
 
 type TicketItemProps = {
-  ticket: Ticket;
-  onClick: (ticket: Ticket) => void;
+  ticket: Database['public']['Tables']['tickets']['Row'];
+  onClick: (ticket: Database['public']['Tables']['tickets']['Row']) => void;
+  userMap?: Record<string, Database['public']['Tables']['users']['Row']>;
+  currentUserId?: string;
 };
 
-const TicketItem: React.FC<TicketItemProps> = ({ ticket, onClick }) => {
-  const assignee = ticket.assigneeId ? getUserById(ticket.assigneeId) : null;
-  const isUrgent = ticket.priority === TicketPriority.HIGH;
-  const currentUser = getCurrentUser();
-  const isAssignedToMe = ticket.assigneeId === currentUser.id;
+const TicketItem: React.FC<TicketItemProps> = ({ 
+  ticket, 
+  onClick, 
+  userMap = {}, 
+  currentUserId 
+}) => {
+  const assignee = ticket.assignee_id ? userMap[ticket.assignee_id] : null;
+  const isUrgent = ticket.priority === 'high';
+  const isAssignedToMe = ticket.assignee_id === currentUserId;
   const hasDeadlineSoon = ticket.deadline && new Date(ticket.deadline).getTime() - new Date().getTime() < 7 * 24 * 60 * 60 * 1000;
   
-  const formatDeadline = (dateString: string) => {
+  const formatDeadline = (dateString: string | null) => {
+    if (!dateString) return '';
     const date = new Date(dateString);
     return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(date);
   };
@@ -34,7 +41,7 @@ const TicketItem: React.FC<TicketItemProps> = ({ ticket, onClick }) => {
     >
       <div className="flex items-start justify-between mb-2">
         <h3 className="font-medium text-star-white">{ticket.title}</h3>
-        <Badge priority={ticket.priority} />
+        <Badge priority={ticket.priority as TicketPriority} />
       </div>
       
       <p className="text-sm text-moon-gray mb-4 line-clamp-2">{ticket.description}</p>

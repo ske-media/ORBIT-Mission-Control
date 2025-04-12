@@ -1,15 +1,21 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
-import { Ticket, TicketStatus } from '../../types';
+import { TicketStatus } from '../../types';
 import TicketItem from './TicketItem';
 import Button from '../ui/Button';
+import { Database } from '../../types/supabase';
+
+type TicketType = Database['public']['Tables']['tickets']['Row'];
+type UserType = Database['public']['Tables']['users']['Row'];
 
 type KanbanColumnProps = {
   status: TicketStatus;
   title: string;
-  tickets: Ticket[];
-  onTicketClick: (ticket: Ticket) => void;
+  tickets: TicketType[];
+  onTicketClick: (ticket: TicketType) => void;
   onAddTicket: (status: TicketStatus) => void;
+  userMap?: Record<string, UserType>;
+  currentUserId?: string;
 };
 
 const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -17,7 +23,9 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
   title,
   tickets,
   onTicketClick,
-  onAddTicket
+  onAddTicket,
+  userMap = {},
+  currentUserId
 }) => {
   return (
     <div className="flex flex-col h-full min-w-[280px] max-w-[320px]">
@@ -44,6 +52,8 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
             key={ticket.id} 
             ticket={ticket} 
             onClick={onTicketClick}
+            userMap={userMap}
+            currentUserId={currentUserId}
           />
         ))}
       </div>

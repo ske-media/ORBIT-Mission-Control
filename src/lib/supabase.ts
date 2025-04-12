@@ -354,6 +354,13 @@ export const createNotification = async (notification: Omit<Database['public']['
 export const getNotificationSettings = async () => {
   const user = await getCurrentUser();
   if (!user) return null;
+  
+  // First check if user profile exists in the users table
+  const userProfile = await getCurrentUserProfile();
+  if (!userProfile) {
+    console.error('User profile does not exist in users table');
+    return null;
+  }
 
   const { data, error } = await supabase
     .from('notification_settings')
@@ -375,6 +382,18 @@ export const getNotificationSettings = async () => {
 };
 
 export const createDefaultNotificationSettings = async (userId: string) => {
+  // First check if user exists in the users table
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', userId)
+    .single();
+
+  if (userError || !userData) {
+    console.error('Error checking user existence or user does not exist:', userError);
+    return null;
+  }
+  
   const { data, error } = await supabase
     .from('notification_settings')
     .insert([{

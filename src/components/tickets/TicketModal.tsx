@@ -1,28 +1,39 @@
 import React, { useState } from 'react';
 import { X, Calendar, AlertTriangle, User, Clock } from 'lucide-react';
-import { Ticket, TicketPriority, TicketStatus } from '../../types';
+import { TicketPriority, TicketStatus } from '../../types';
 import Badge from '../ui/Badge';
 import Button from '../ui/Button';
 import Avatar from '../ui/Avatar';
-import { getUserById, getProjectById, getCurrentUser } from '../../data/mockData';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Database } from '../../types/supabase';
+
+type TicketType = Database['public']['Tables']['tickets']['Row'];
+type UserType = Database['public']['Tables']['users']['Row'];
+type ProjectType = Database['public']['Tables']['projects']['Row'];
 
 type TicketModalProps = {
-  ticket: Ticket | null;
+  ticket: TicketType | null;
   onClose: () => void;
   onStatusChange: (ticketId: string, newStatus: TicketStatus) => void;
   onAssignToMe: (ticketId: string) => void;
+  userMap?: Record<string, UserType>;
+  projectData?: ProjectType | null;
 };
 
-const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose, onStatusChange, onAssignToMe }) => {
+const TicketModal: React.FC<TicketModalProps> = ({ 
+  ticket, 
+  onClose, 
+  onStatusChange, 
+  onAssignToMe,
+  userMap = {},
+  projectData
+}) => {
   const [isClosing, setIsClosing] = useState(false);
   
   if (!ticket) return null;
   
-  const assignee = ticket.assigneeId ? getUserById(ticket.assigneeId) : null;
-  const project = getProjectById(ticket.projectId);
-  const currentUser = getCurrentUser();
-  const isAssignedToMe = ticket.assigneeId === currentUser.id;
+  const assignee = ticket.assignee_id ? userMap[ticket.assignee_id] : null;
+  const project = projectData;
   
   const handleClose = () => {
     setIsClosing(true);
@@ -77,8 +88,8 @@ const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose, onStatusChan
         >
           <div className="p-6 border-b border-white/10 flex justify-between items-center">
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-orbitron text-star-white">Ticket #{ticket.id.split('').slice(-3).join('')}</h2>
-              <Badge priority={ticket.priority} />
+              <h2 className="text-xl font-orbitron text-star-white">Ticket #{ticket.id.slice(-8)}</h2>
+              <Badge priority={ticket.priority as TicketPriority} />
             </div>
             <button 
               onClick={handleClose}
@@ -148,7 +159,7 @@ const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose, onStatusChan
                   <button
                     key={option.value}
                     className={`px-4 py-2 rounded-full text-sm transition-all ${
-                      ticket.status === option.value
+                      ticket.status === option.value.toLowerCase()
                         ? 'bg-nebula-purple text-star-white'
                         : 'bg-white/5 text-moon-gray hover:bg-white/10'
                     }`}
@@ -168,16 +179,16 @@ const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose, onStatusChan
               <div className="space-y-3">
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-moon-gray">Créé le</span>
-                  <span className="text-star-white">{formatDate(ticket.createdAt)}</span>
+                  <span className="text-star-white">{formatDate(ticket.created_at)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-moon-gray">Dernière modification</span>
-                  <span className="text-star-white">{formatDate(ticket.updatedAt)}</span>
+                  <span className="text-star-white">{formatDate(ticket.updated_at)}</span>
                 </div>
               </div>
             </div>
             
-            {(ticket.priority === TicketPriority.HIGH && ticket.status !== TicketStatus.DONE) && (
+            {(ticket.priority === 'high' && ticket.status !== 'done') && (
               <div className="bg-red-alert/10 border border-red-alert/20 rounded-lg p-4 flex items-start gap-3">
                 <AlertTriangle size={20} className="text-red-alert flex-shrink-0 mt-0.5" />
                 <div>
@@ -192,12 +203,12 @@ const TicketModal: React.FC<TicketModalProps> = ({ ticket, onClose, onStatusChan
             <Button variant="ghost" onClick={handleClose}>
               Fermer
             </Button>
-            {!isAssignedToMe && ticket.assigneeId === null && (
+            {!assignee && (
               <Button variant="primary" onClick={() => onAssignToMe(ticket.id)}>
                 M'assigner
               </Button>
             )}
-            {ticket.status !== TicketStatus.DONE && (
+            {ticket.status !== 'done' && (
               <Button 
                 variant="primary"
                 onClick={() => onStatusChange(ticket.id, TicketStatus.DONE)}

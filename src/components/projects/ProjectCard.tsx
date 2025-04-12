@@ -20,6 +20,19 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
   useEffect(() => {
     const fetchProjectData = async () => {
       try {
+        if (!project.id) {
+          console.error('Project ID is undefined or null');
+          setLoading(false);
+          return;
+        }
+        
+        // Validate UUID format to prevent errors
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(project.id)) {
+          console.error(`Invalid UUID format for project: ${project.id}`);
+          setLoading(false);
+          return;
+        }
+        
         // Fetch tickets for this project
         const { data: tickets, error } = await supabase
           .from('tickets')

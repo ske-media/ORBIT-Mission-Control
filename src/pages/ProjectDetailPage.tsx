@@ -1,37 +1,87 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { DndContext, DragEndEvent, closestCenter } from '@dnd-kit/core';
 import { Calendar, ListFilter, Users, Layers, AlertTriangle } from 'lucide-react';
-import { 
-  getProjectById, 
-  getTicketsByProject, 
-  getUserById, 
-  getProjectCompletion,
-  getCurrentUser
-} from '../data/mockData';
 import { Ticket, TicketStatus, TicketStatusLabels } from '../types';
 import KanbanColumn from '../components/tickets/KanbanColumn';
 import TicketModal from '../components/tickets/TicketModal';
 import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
+import { 
+  getProjectById, 
+  getTicketsByProject, 
+  getUserById, 
+  getCurrentUserProfile,
+  updateTicket 
+} from '../lib/supabase';
+import { Database } from '../types/supabase';
+
+type ProjectType = Database['public']['Tables']['projects']['Row'];
+type UserType = Database['public']['Tables']['users']['Row'];
+type TicketType = Database['public']['Tables']['tickets']['Row'];
 
 const ProjectDetailPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
-  const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
-  const [tickets, setTickets] = useState<Ticket[]>(() => {
-    if (!projectId) return [];
-    return getTicketsByProject(projectId);
-  });
+  const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
+  const [tickets, setTickets] = useState<TicketType[]>([]);
+  const [project, setProject] = useState<ProjectType | null>(null);
+  const [team, setTeam] = useState<UserType[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
   const [filterMine, setFilterMine] = useState(false);
   const [filterUrgent, setFilterUrgent] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [userMap, setUserMap] = useState<Record<string, UserType>>({});
   
-  const project = projectId ? getProjectById(projectId) : null;
-  const completion = projectId ? getProjectCompletion(projectId) : 0;
-  const currentUser = getCurrentUser();
-  
-  if (!project) {
-    return <div className="p-8 text-center text-moon-gray">Projet non trouvé</div>;
-  }
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!projectId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+        
+        // Fetch project details
+        const projectData = await getProjectById(projectId);
+        setProject(projectData);
+        
+        // Fetch tickets for this project
+        const ticketsData = await getTicketsByProject(projectId);
+        setTickets(ticketsData);
+        
+        // Fetch current user
+        const user = await getCurrentUserProfile();
+        setCurrentUser(user);
+        
+        // Get unique assignee IDs from tickets
+        const assigneeIds = new Set<string>();
+        ticketsData.forEach(ticket => {
+          if (ticket.assignee_id) assigneeIds.add(ticket.assignee_id);
+        });
+        
+        // Fetch team members info
+        const usersData: UserType[] = [];
+        const userMapData: Record<string, UserType> = {};
+        
+        for (const id of assigneeIds) {
+          const userData = await getUserById(id);
+          if (userData) {
+            usersData.push(userData);
+            userMapData[id] = userData;
+          }
+        }
+        
+        setTeam(usersData);
+        setUserMap(userMapData);
+      } catch (error) {
+        console.error('Error fetching project data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchData();
+  }, [projectId]);
   
   const formatDeadline = (dateString: string | null) => {
     if (!dateString) return 'Pas de deadline';
@@ -43,78 +93,70 @@ const ProjectDetailPage: React.FC = () => {
     }).format(date);
   };
   
-  const getTeamMembers = () => {
-    const memberIds = new Set(tickets
-      .filter(ticket => ticket.assigneeId)
-      .map(ticket => ticket.assigneeId));
-    
-    return Array.from(memberIds)
-      .filter((id): id is string => id !== null)
-      .map(id => getUserById(id))
-      .filter((user): user is NonNullable<ReturnType<typeof getUserById>> => user !== undefined);
-  };
-  
   const filteredTickets = tickets.filter(ticket => {
-    if (filterMine && ticket.assigneeId !== currentUser.id) return false;
+    if (filterMine && ticket.assignee_id !== currentUser?.id) return false;
     if (filterUrgent && ticket.priority !== 'high') return false;
     return true;
   });
   
   const ticketsByStatus = Object.values(TicketStatus).reduce((acc, status) => {
-    acc[status] = filteredTickets.filter(ticket => ticket.status === status);
+    acc[status] = filteredTickets.filter(ticket => ticket.status === status.toLowerCase());
     return acc;
-  }, {} as Record<TicketStatus, Ticket[]>);
+  }, {} as Record<TicketStatus, TicketType[]>);
   
-  const handleTicketClick = (ticket: Ticket) => {
+  const handleTicketClick = (ticket: TicketType) => {
     setSelectedTicket(ticket);
   };
   
-  const handleStatusChange = (ticketId: string, newStatus: TicketStatus) => {
-    setTickets(prev => prev.map(ticket => 
-      ticket.id === ticketId 
-        ? { ...ticket, status: newStatus, updatedAt: new Date().toISOString() } 
-        : ticket
-    ));
-    
-    // Update the selected ticket if it's open
-    if (selectedTicket && selectedTicket.id === ticketId) {
-      setSelectedTicket({
-        ...selectedTicket,
-        status: newStatus,
-        updatedAt: new Date().toISOString()
+  const handleStatusChange = async (ticketId: string, newStatus: TicketStatus) => {
+    try {
+      // Update in Supabase
+      const updatedTicket = await updateTicket(ticketId, {
+        status: newStatus.toLowerCase()
       });
-    }
-  };
-  
-  const handleAssignToMe = (ticketId: string) => {
-    setTickets(prev => prev.map(ticket => 
-      ticket.id === ticketId 
-        ? { 
-            ...ticket, 
-            assigneeId: currentUser.id, 
-            updatedAt: new Date().toISOString() 
-          } 
-        : ticket
-    ));
-    
-    // Update the selected ticket if it's open
-    if (selectedTicket && selectedTicket.id === ticketId) {
-      setSelectedTicket({
-        ...selectedTicket,
-        assigneeId: currentUser.id,
-        updatedAt: new Date().toISOString()
-      });
-    }
-  };
-  
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    
-    if (over && active.id !== over.id) {
-      const ticketId = active.id as string;
-      const newStatus = over.id as TicketStatus;
       
-      handleStatusChange(ticketId, newStatus);
+      // Update local state
+      if (updatedTicket) {
+        setTickets(prev => prev.map(ticket => 
+          ticket.id === ticketId 
+            ? updatedTicket
+            : ticket
+        ));
+        
+        // Update selected ticket if it's open
+        if (selectedTicket && selectedTicket.id === ticketId) {
+          setSelectedTicket(updatedTicket);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating ticket status:', error);
+    }
+  };
+  
+  const handleAssignToMe = async (ticketId: string) => {
+    if (!currentUser) return;
+    
+    try {
+      // Update in Supabase
+      const updatedTicket = await updateTicket(ticketId, {
+        assignee_id: currentUser.id
+      });
+      
+      // Update local state
+      if (updatedTicket) {
+        setTickets(prev => prev.map(ticket => 
+          ticket.id === ticketId 
+            ? updatedTicket
+            : ticket
+        ));
+        
+        // Update selected ticket if it's open
+        if (selectedTicket && selectedTicket.id === ticketId) {
+          setSelectedTicket(updatedTicket);
+        }
+      }
+    } catch (error) {
+      console.error('Error assigning ticket:', error);
     }
   };
   
@@ -123,10 +165,31 @@ const ProjectDetailPage: React.FC = () => {
     console.log(`Add ticket with status: ${status}`);
   };
   
-  const team = getTeamMembers();
-  const urgentCount = filteredTickets.filter(t => t.priority === 'high' && t.status !== 'done').length;
+  // Calculate project stats
+  const completion = React.useMemo(() => {
+    if (!tickets.length) return 0;
+    const completedTickets = tickets.filter(t => t.status === 'done').length;
+    return Math.round((completedTickets / tickets.length) * 100);
+  }, [tickets]);
+  
+  const urgentCount = React.useMemo(() => {
+    return filteredTickets.filter(t => t.priority === 'high' && t.status !== 'done').length;
+  }, [filteredTickets]);
+  
   const totalTasks = filteredTickets.length;
   const completedTasks = filteredTickets.filter(t => t.status === 'done').length;
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[50vh]">
+        <div className="w-12 h-12 rounded-full border-4 border-nebula-purple/30 border-t-nebula-purple animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (!project) {
+    return <div className="p-8 text-center text-moon-gray">Projet non trouvé</div>;
+  }
 
   return (
     <div className="p-8">
@@ -233,10 +296,12 @@ const ProjectDetailPage: React.FC = () => {
       
       {selectedTicket && (
         <TicketModal 
-          ticket={selectedTicket} 
+          ticket={selectedTicket}
           onClose={() => setSelectedTicket(null)} 
           onStatusChange={handleStatusChange}
           onAssignToMe={handleAssignToMe}
+          userMap={userMap}
+          projectData={project}
         />
       )}
     </div>
