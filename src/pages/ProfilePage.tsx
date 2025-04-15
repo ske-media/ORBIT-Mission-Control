@@ -1,6 +1,5 @@
 import React from 'react';
 import { Edit, Mail, Shield, Calendar, Activity } from 'lucide-react';
-import { getCurrentUser } from '../data/mockData';
 import Avatar from '../components/ui/Avatar';
 import Button from '../components/ui/Button';
 

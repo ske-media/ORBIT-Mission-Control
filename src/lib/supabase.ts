@@ -57,7 +57,13 @@ export const getCurrentUserProfile = async () => {
 export const getProjects = async () => {
   const { data, error } = await supabase
     .from('projects')
-    .select('*')
+    .select(`
+      *,
+      project_members (
+        user_id,
+        role
+      )
+    `)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -71,7 +77,13 @@ export const getProjects = async () => {
 export const getProjectById = async (id: string) => {
   const { data, error } = await supabase
     .from('projects')
-    .select('*')
+    .select(`
+      *,
+      project_members (
+        user_id,
+        role
+      )
+    `)
     .eq('id', id)
     .limit(1);
 
@@ -84,10 +96,14 @@ export const getProjectById = async (id: string) => {
 };
 
 export const createProject = async (project: Omit<Database['public']['Tables']['projects']['Insert'], 'id' | 'created_at' | 'updated_at'>) => {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
   const { data, error } = await supabase
     .from('projects')
     .insert([{
       ...project,
+      owner_id: user.id,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }])
@@ -113,6 +129,24 @@ export const updateProject = async (id: string, project: Partial<Database['publi
 
   if (error) {
     console.error('Error updating project:', error);
+    return null;
+  }
+
+  return data && data.length > 0 ? data[0] : null;
+};
+
+export const addProjectMember = async (projectId: string, userId: string, role: 'editor' | 'viewer') => {
+  const { data, error } = await supabase
+    .from('project_members')
+    .insert([{
+      project_id: projectId,
+      user_id: userId,
+      role
+    }])
+    .select();
+
+  if (error) {
+    console.error('Error adding project member:', error);
     return null;
   }
 
