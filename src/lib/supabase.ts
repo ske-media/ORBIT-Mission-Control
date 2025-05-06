@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { Database } from '../types/supabase';
+import { User as AuthUser } from '@supabase/supabase-js'; // Importe le type User d'authentification
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -8,296 +9,361 @@ if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Supabase URL and Anon Key must be defined in .env file');
 }
 
+// Initialize the Supabase client
 export const supabase = createClient<Database>(
   supabaseUrl,
   supabaseAnonKey
 );
 
-// Auth helpers
-export const getCurrentUser = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  return session?.user ?? null;
+// Type alias pour plus de clarté
+type UserProfile = Database['public']['Tables']['users']['Row'];
+type Project = Database['public']['Tables']['projects']['Row'];
+type Ticket = Database['public']['Tables']['tickets']['Row'];
+type InboxItem = Database['public']['Tables']['inbox_items']['Row'];
+type Notification = Database['public']['Tables']['notifications']['Row'];
+type NotificationSettings = Database['public']['Tables']['notification_settings']['Row'];
+type ProjectMember = Database['public']['Tables']['project_members']['Row'];
+export type ProjectMemberWithUser = ProjectMember & { users: UserProfile | null }; // Exporté pour usage externe
+
+// ==================================
+// Auth Helpers
+// ==================================
+export const getCurrentUser = async (): Promise<AuthUser | null> => {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error) {
+    console.error('Error fetching user session:', error.message);
+    return null;
+  }
+  return user;
 };
 
-// Users
-export const getUserById = async (userId: string) => {
+// ==================================
+// Users Table Helpers
+// ==================================
+export const getUserById = async (userId: string): Promise<UserProfile | null> => {
   const { data, error } = await supabase
     .from('users')
     .select('*')
     .eq('id', userId)
-    .limit(1);
-
+    .single();
   if (error) {
-    console.error('Error fetching user:', error);
-    return null;
+    console.error(`Error fetching user by ID (${userId}):`, error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-export const getCurrentUserProfile = async () => {
+export const getCurrentUserProfile = async (): Promise<UserProfile | null> => {
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user) throw new Error("User not authenticated. Cannot fetch profile.");
 
   const { data, error } = await supabase
     .from('users')
     .select('*')
     .eq('id', user.id)
-    .limit(1);
-
+    .single();
   if (error) {
-    console.error('Error fetching user profile:', error);
-    return null;
+    if (error.code === 'PGRST116') {
+      console.warn(`User profile not found for auth user id: ${user.id}.`);
+      return null;
+    }
+    console.error('Error fetching current user profile:', error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
-};
-
-// Projects
-export const getProjects = async () => {
-  const { data, error } = await supabase
-    .from('projects')
-    .select(`
-      *,
-      project_members (
-        user_id,
-        role
-      )
-    `)
-    .order('created_at', { ascending: false });
-
-  if (error) {
-    console.error('Error fetching projects:', error);
-    return [];
-  }
-
   return data;
 };
 
-export const getProjectById = async (id: string) => {
+// ==================================
+// Projects Table Helpers
+// ==================================
+export const getProjects = async (): Promise<Project[]> => {
   const { data, error } = await supabase
     .from('projects')
-    .select(`
-      *,
-      project_members (
-        user_id,
-        role
-      )
-    `)
-    .eq('id', id)
-    .limit(1);
-
+    .select(`*, project_members(user_id, role)`) // Inclure membres est utile
+    .order('created_at', { ascending: false });
   if (error) {
-    console.error('Error fetching project:', error);
-    return null;
+    console.error('Error fetching projects:', error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data || [];
 };
 
-export const createProject = async (project: Omit<Database['public']['Tables']['projects']['Insert'], 'id' | 'created_at' | 'updated_at'>) => {
+export const getProjectById = async (id: string): Promise<Project | null> => {
+  const { data, error } = await supabase
+    .from('projects')
+    .select(`*, project_members(user_id, role)`)
+    .eq('id', id)
+    .single();
+  if (error) {
+    console.error(`Error fetching project by ID (${id}):`, error);
+    throw error;
+  }
+  return data;
+};
+
+export const createProject = async (
+    project: Omit<Database['public']['Tables']['projects']['Insert'], 'id' | 'owner_id' | 'created_at' | 'updated_at'>
+): Promise<Project> => {
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user) throw new Error('User not authenticated. Cannot create project.');
 
   const { data, error } = await supabase
     .from('projects')
-    .insert([{
-      ...project,
-      owner_id: user.id,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }])
-    .select();
-
+    .insert([{ ...project, owner_id: user.id }])
+    .select()
+    .single();
   if (error) {
     console.error('Error creating project:', error);
-    return null;
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-export const updateProject = async (id: string, project: Partial<Database['public']['Tables']['projects']['Update']>) => {
+export const updateProject = async (id: string, projectUpdates: Partial<Project>): Promise<Project | null> => {
   const { data, error } = await supabase
     .from('projects')
-    .update({
-      ...project,
-      updated_at: new Date().toISOString()
-    })
+    .update({ ...projectUpdates, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .select();
-
+    .select()
+    .single();
   if (error) {
-    console.error('Error updating project:', error);
-    return null;
+    console.error(`Error updating project (${id}):`, error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-export const addProjectMember = async (projectId: string, userId: string, role: 'editor' | 'viewer') => {
+// ==================================
+// Project Members Table Helpers -- NOUVEAU / MODIFIÉ
+// ==================================
+export const getProjectMembers = async (projectId: string): Promise<ProjectMemberWithUser[]> => {
   const { data, error } = await supabase
     .from('project_members')
-    .insert([{
-      project_id: projectId,
-      user_id: userId,
-      role
-    }])
-    .select();
-
+    .select(`
+      role,
+      created_at,
+      users (*)
+    `)
+    .eq('project_id', projectId);
   if (error) {
-    console.error('Error adding project member:', error);
-    return null;
+    console.error(`Error fetching project members for project (${projectId}):`, error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return (data as ProjectMemberWithUser[]) || []; // Cast explicite
 };
 
-// Tickets
-export const getTicketsByProject = async (projectId: string) => {
+export const addProjectMember = async (projectId: string, userId: string, role: 'editor' | 'viewer'): Promise<ProjectMember | null> => {
+  const { data, error } = await supabase
+    .from('project_members')
+    .insert([{ project_id: projectId, user_id: userId, role }])
+    .select()
+    .single();
+  if (error) {
+    console.error(`Error adding project member (user: ${userId}, project: ${projectId}):`, error);
+    throw error;
+  }
+  return data;
+};
+
+
+export const updateProjectMemberRole = async (projectId: string, userId: string, newRole: 'editor' | 'viewer'): Promise<ProjectMember | null> => {
+  if (newRole === 'owner') throw new Error("Cannot assign 'owner' role via this function.");
+
+  const { data, error } = await supabase
+    .from('project_members')
+    .update({ role: newRole })
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .neq('role', 'owner')
+    .select()
+    .single();
+  if (error) {
+    console.error(`Error updating role for member (${userId}) in project (${projectId}):`, error);
+    throw error;
+  }
+   if (!data) {
+       console.warn(`No non-owner member found to update role for user ${userId} in project ${projectId}`);
+       // Ou throw: throw new Error("Member not found or is owner.");
+   }
+  return data;
+};
+
+export const removeProjectMember = async (projectId: string, userId: string): Promise<boolean> => {
+  const { data: projectData, error: projectError } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+  if (projectError) throw projectError;
+  if (projectData?.owner_id === userId) throw new Error("Project owner cannot be removed.");
+
+  const { error } = await supabase
+    .from('project_members')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .neq('role', 'owner');
+  if (error) {
+    console.error(`Error removing member (${userId}) from project (${projectId}):`, error);
+    throw error;
+  }
+  return true;
+};
+
+export const getUsersToInvite = async (projectId: string, searchTerm: string = ""): Promise<UserProfile[]> => {
+  const { data: membersData, error: membersError } = await supabase
+    .from('project_members')
+    .select('user_id')
+    .eq('project_id', projectId);
+  if (membersError) throw membersError;
+  const existingMemberIds = membersData?.map(m => m.user_id) || [];
+
+  // Ensure the array is not empty before using 'in' filter, otherwise it causes an error
+  const memberIdsFilter = existingMemberIds.length > 0 ? `(${existingMemberIds.join(',')})` : '(null)';
+
+  let query = supabase
+    .from('users')
+    .select('id, name, email, avatar')
+    .not('id', 'in', memberIdsFilter);
+
+  if (searchTerm.trim()) {
+      query = query.or(`name.ilike.%${searchTerm.trim()}%,email.ilike.%${searchTerm.trim()}%`);
+  }
+
+  const { data, error } = await query.limit(10);
+  if (error) {
+    console.error('Error fetching users to invite:', error);
+    throw error;
+  }
+  return data || [];
+};
+
+
+// ==================================
+// Tickets Table Helpers
+// ==================================
+export const getTicketsByProject = async (projectId: string): Promise<Ticket[]> => {
   const { data, error } = await supabase
     .from('tickets')
     .select('*')
     .eq('project_id', projectId)
     .order('created_at', { ascending: false });
-
   if (error) {
-    console.error('Error fetching tickets:', error);
-    return [];
+    console.error(`Error fetching tickets for project (${projectId}):`, error);
+    throw error;
   }
-
-  return data;
+  return data || [];
 };
 
-export const getTicketById = async (id: string) => {
+export const getTicketById = async (id: string): Promise<Ticket | null> => {
   const { data, error } = await supabase
     .from('tickets')
     .select('*')
     .eq('id', id)
-    .limit(1);
-
+    .single();
   if (error) {
-    console.error('Error fetching ticket:', error);
-    return null;
+    console.error(`Error fetching ticket by ID (${id}):`, error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-export const createTicket = async (ticket: Omit<Database['public']['Tables']['tickets']['Insert'], 'id' | 'created_at' | 'updated_at'>) => {
+export const createTicket = async (ticket: Omit<Ticket, 'id' | 'created_at' | 'updated_at'>): Promise<Ticket> => {
   const { data, error } = await supabase
     .from('tickets')
-    .insert([{
-      ...ticket,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }])
-    .select();
-
+    .insert([{ ...ticket }])
+    .select()
+    .single();
   if (error) {
     console.error('Error creating ticket:', error);
-    return null;
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-export const updateTicket = async (id: string, ticket: Partial<Database['public']['Tables']['tickets']['Update']>) => {
+export const updateTicket = async (id: string, ticketUpdates: Partial<Ticket>): Promise<Ticket | null> => {
   const { data, error } = await supabase
     .from('tickets')
-    .update({
-      ...ticket,
-      updated_at: new Date().toISOString()
-    })
+    .update({ ...ticketUpdates, updated_at: new Date().toISOString() })
     .eq('id', id)
-    .select();
-
+    .select()
+    .single();
   if (error) {
-    console.error('Error updating ticket:', error);
-    return null;
+    console.error(`Error updating ticket (${id}):`, error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-// Inbox
-export const getInboxItems = async () => {
+// ==================================
+// Inbox Items Table Helpers
+// ==================================
+export const getInboxItems = async (): Promise<InboxItem[]> => {
   const { data, error } = await supabase
     .from('inbox_items')
     .select('*')
     .order('created_at', { ascending: false });
-
   if (error) {
     console.error('Error fetching inbox items:', error);
-    return [];
+    throw error;
   }
-
-  return data;
+  return data || [];
 };
 
-export const createInboxItem = async (item: Omit<Database['public']['Tables']['inbox_items']['Insert'], 'id' | 'created_at'>) => {
+export const createInboxItem = async (item: Omit<InboxItem, 'id' | 'created_by' | 'created_at'>): Promise<InboxItem> => {
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user) throw new Error('User not authenticated. Cannot create inbox item.');
 
   const { data, error } = await supabase
     .from('inbox_items')
-    .insert([{
-      ...item,
-      created_by: user.id,
-      created_at: new Date().toISOString()
-    }])
-    .select();
-
+    .insert([{ ...item, created_by: user.id }])
+    .select()
+    .single();
   if (error) {
     console.error('Error creating inbox item:', error);
-    return null;
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-// Statistics
-export const getProjectCompletion = async (projectId: string) => {
-  const tickets = await getTicketsByProject(projectId);
+// ==================================
+// Statistics Helpers
+// ==================================
+// Note: Consider moving complex aggregations to DB functions/views for better performance/RLS handling
+
+export const getProjectCompletion = async (projectId: string): Promise<number> => {
+  const tickets = await getTicketsByProject(projectId); // This respects RLS on tickets
   if (tickets.length === 0) return 0;
-  
   const completedTickets = tickets.filter(ticket => ticket.status === 'done').length;
   return Math.round((completedTickets / tickets.length) * 100);
 };
 
-export const getUrgentTicketsCount = async (projectId: string) => {
+export const getUrgentTicketsCount = async (projectId: string): Promise<number> => {
+  // Assumes RLS on tickets allows counting for project members
   const { count, error } = await supabase
     .from('tickets')
     .select('*', { count: 'exact', head: true })
     .eq('project_id', projectId)
     .eq('priority', 'high')
     .neq('status', 'done');
-
   if (error) {
-    console.error('Error counting urgent tickets:', error);
-    return 0;
+    console.error(`Error counting urgent tickets for project (${projectId}):`, error);
+    throw error;
   }
-
   return count || 0;
 };
 
-export const getInboxItemsByProject = async (projectId: string) => {
-  const { data, error } = await supabase
-    .from('inbox_items')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false });
+// ... (autres fonctions stats si besoin)
 
-  if (error) {
-    console.error('Error fetching inbox items by project:', error);
-    return [];
-  }
+// ==================================
+// Notifications & Settings Helpers
+// ==================================
+// ... (getNotifications, getUnreadNotificationsCount, markNotificationAsRead, etc. - PAS DE CHANGEMENTS MAJEURS REQUIS ICI a priori) ...
 
-  return data;
-};
+// Garde les fonctions de notification et settings telles quelles, elles semblent correctes.
+// Juste s'assurer qu'elles utilisent .single() et throw error comme les autres.
 
-// Notifications
-export const getNotifications = async (limit = 10) => {
+export const getNotifications = async (limit = 20): Promise<Notification[]> => {
   const user = await getCurrentUser();
   if (!user) return [];
 
@@ -307,16 +373,14 @@ export const getNotifications = async (limit = 10) => {
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(limit);
-
   if (error) {
     console.error('Error fetching notifications:', error);
-    return [];
+    throw error;
   }
-
-  return data;
+  return data || [];
 };
 
-export const getUnreadNotificationsCount = async () => {
+export const getUnreadNotificationsCount = async (): Promise<number> => {
   const user = await getCurrentUser();
   if (!user) return 0;
 
@@ -325,155 +389,91 @@ export const getUnreadNotificationsCount = async () => {
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user.id)
     .eq('is_read', false);
-
   if (error) {
     console.error('Error counting unread notifications:', error);
-    return 0;
+    throw error;
   }
-
   return count || 0;
 };
 
-export const markNotificationAsRead = async (notificationId: string) => {
+export const markNotificationAsRead = async (notificationId: string): Promise<Notification | null> => {
   const { data, error } = await supabase
     .from('notifications')
     .update({ is_read: true })
     .eq('id', notificationId)
-    .select();
-
+    .select()
+    .single();
   if (error) {
-    console.error('Error marking notification as read:', error);
-    return null;
+    console.error(`Error marking notification (${notificationId}) as read:`, error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-export const markAllNotificationsAsRead = async () => {
+export const markAllNotificationsAsRead = async (): Promise<boolean> => {
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user) throw new Error("User not authenticated.");
 
   const { error } = await supabase
     .from('notifications')
     .update({ is_read: true })
     .eq('user_id', user.id)
     .eq('is_read', false);
-
   if (error) {
     console.error('Error marking all notifications as read:', error);
-    return false;
+    throw error;
   }
-
   return true;
 };
 
-export const createNotification = async (notification: Omit<Database['public']['Tables']['notifications']['Insert'], 'id' | 'created_at'>) => {
+export const createNotification = async (notification: Omit<Notification, 'id' | 'created_at' | 'is_read'>): Promise<Notification> => {
   const { data, error } = await supabase
     .from('notifications')
-    .insert([{
-      ...notification,
-      created_at: new Date().toISOString()
-    }])
-    .select();
-
+    .insert([{ ...notification }]) // is_read defaults to false
+    .select()
+    .single();
   if (error) {
     console.error('Error creating notification:', error);
-    return null;
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-// Notification Settings
-export const getNotificationSettings = async () => {
+export const getNotificationSettings = async (): Promise<NotificationSettings | null> => {
   const user = await getCurrentUser();
-  if (!user) return null;
-  
-  // First check if user profile exists in the users table
-  const userProfile = await getCurrentUserProfile();
-  if (!userProfile) {
-    console.error('User profile does not exist in users table');
-    return null;
-  }
+  if (!user) throw new Error("User not authenticated.");
+  const userProfile = await getCurrentUserProfile(); // Vérifie que le profil public existe
+  if (!userProfile) throw new Error(`User profile does not exist, cannot fetch settings.`);
 
   const { data, error } = await supabase
     .from('notification_settings')
     .select('*')
     .eq('user_id', user.id)
-    .limit(1);
-
-  if (error) {
-    console.error('Error fetching notification settings:', error);
-    return null;
-  }
-
-  // If no settings exists yet, create default settings
-  if (!data || data.length === 0) {
-    return createDefaultNotificationSettings(user.id);
-  }
-
-  return data[0];
-};
-
-export const createDefaultNotificationSettings = async (userId: string) => {
-  // First check if user exists in the users table
-  const { data: userData, error: userError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', userId)
     .single();
-
-  if (userError || !userData) {
-    console.error('Error checking user existence or user does not exist:', userError);
-    return null;
-  }
-  
-  const { data, error } = await supabase
-    .from('notification_settings')
-    .insert([{
-      user_id: userId,
-      email_notifications: true,
-      browser_notifications: true,
-      sound_enabled: true,
-      notification_types: ['ticket_assigned', 'deadline_approaching', 'mention'],
-      updated_at: new Date().toISOString()
-    }])
-    .select();
-
   if (error) {
-    console.error('Error creating notification settings:', error);
-    return null;
+    if (error.code === 'PGRST116') {
+      console.warn(`Notification settings not found for user ${user.id}. Check DB trigger.`);
+      return null; // Le trigger devrait s'en charger
+    }
+    console.error('Error fetching notification settings:', error);
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };
 
-export const updateNotificationSettings = async (settings: Partial<Database['public']['Tables']['notification_settings']['Update']>) => {
+export const updateNotificationSettings = async (settingsUpdates: Partial<NotificationSettings>): Promise<NotificationSettings | null> => {
   const user = await getCurrentUser();
-  if (!user) return null;
+  if (!user) throw new Error("User not authenticated.");
 
-  // First, check if settings exist
-  const existingSettings = await getNotificationSettings();
-  
-  // If no settings exist, create them first
-  if (!existingSettings) {
-    return createDefaultNotificationSettings(user.id);
-  }
-
-  // Update existing settings
   const { data, error } = await supabase
     .from('notification_settings')
-    .update({
-      ...settings,
-      updated_at: new Date().toISOString()
-    })
+    .update({ ...settingsUpdates, updated_at: new Date().toISOString() })
     .eq('user_id', user.id)
-    .select();
-
+    .select()
+    .single();
   if (error) {
     console.error('Error updating notification settings:', error);
-    return null;
+    throw error;
   }
-
-  return data && data.length > 0 ? data[0] : null;
+  return data;
 };

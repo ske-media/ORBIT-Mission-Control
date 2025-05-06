@@ -1,198 +1,190 @@
-import React, { useState, useEffect } from 'react';
+// src/pages/InboxPage.tsx
+
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Send, MessageSquare, Trash2, X, AlertCircle } from 'lucide-react'; // Added Trash2, AlertCircle
+import { Plus, Send, MessageSquare, Trash2, X as IconX, AlertCircle, RefreshCw, Edit3, Briefcase } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
+import CreateTicketModal from '../components/tickets/CreateTicketModal';
 import {
   getCurrentUserProfile,
   getInboxItems,
   createInboxItem,
-  getUserById,
-  getProjectById,
-  supabase // Import supabase directly for delete
+  getProjects, // Pour lister les projets dans la modal de création de ticket
+  supabase,
+  ProjectMemberWithUser // Pour type si jamais on voulait afficher plus tard des membres
 } from '../lib/supabase';
 import { Database } from '../types/supabase';
-import { useAuth } from '../contexts/AuthContext'; // Needed if getCurrentUserProfile fails
+import { useAuth } from '../contexts/AuthContext';
+import { TicketStatus } from '../types'; // Pour le statut par défaut
 
-type InboxItem = Database['public']['Tables']['inbox_items']['Row'];
-type User = Database['public']['Tables']['users']['Row'];
-type Project = Database['public']['Tables']['projects']['Row'];
+// Types
+type InboxItemType = Database['public']['Tables']['inbox_items']['Row'];
+type UserType = Database['public']['Tables']['users']['Row'];
+type ProjectTypeForSelect = Pick<Database['public']['Tables']['projects']['Row'], 'id' | 'name'>; // Pour le sélecteur de projet
+type TicketType = Database['public']['Tables']['tickets']['Row'];
 
 const InboxPage: React.FC = () => {
+  // --- États Principaux ---
   const [newMessage, setNewMessage] = useState('');
-  const [inboxItems, setInboxItems] = useState<InboxItem[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [inboxItems, setInboxItems] = useState<InboxItemType[]>([]);
+  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+  // Map pour les détails des projets liés aux items (pour affichage)
+  const [projectsLinkedMap, setProjectsLinkedMap] = useState<Record<string, ProjectTypeForSelect>>({});
+  // Map pour les détails des créateurs des items (pour affichage)
+  const [usersMap, setUsersMap] = useState<Record<string, UserType>>({});
+  // Liste des projets disponibles pour la création de ticket
+  const [availableProjectsForModal, setAvailableProjectsForModal] = useState<ProjectTypeForSelect[]>([]);
+
+  // --- États UI et Opérations ---
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false); // Loading state for creation
   const [error, setError] = useState<string | null>(null);
-  const [projectsMap, setProjectsMap] = useState<Record<string, Project>>({}); // Renamed for clarity
-  const [usersMap, setUsersMap] = useState<Record<string, User>>({}); // Renamed for clarity
+  const [creatingItem, setCreatingItem] = useState(false); // Pour la création d'item inbox
+  const [deletingItemId, setDeletingItemId] = useState<string | null>(null);
 
-  const { user: authUser } = useAuth(); // Get basic auth user as fallback
+  // États pour la modal de création de ticket
+  const [showCreateTicketModal, setShowCreateTicketModal] = useState(false);
+  const [selectedInboxItemForTicket, setSelectedInboxItemForTicket] = useState<InboxItemType | null>(null);
 
-  // Function to fetch all necessary data
-  const fetchData = async () => {
+  const { user: authUser } = useAuth();
+
+  // --- Fetch Initial Data ---
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      // Fetch current user profile first
-      const userProfile = await getCurrentUserProfile();
-      if (!userProfile && authUser) {
-        // Fallback or specific handling if profile is missing but auth exists
-        console.warn("Current user profile not found in 'users' table, using auth data where possible.");
-        // Use authUser for basic info if needed, but some features might be limited
-        setCurrentUser({ // Construct a partial User object from auth if necessary
-            id: authUser.id,
-            email: authUser.email || 'N/A',
-            name: authUser.user_metadata?.name || 'Utilisateur', // Example fallback
-            avatar: authUser.user_metadata?.avatar_url || 'DEFAULT_AVATAR_URL', // Example fallback
-            role: 'collaborator', // Assuming default role if profile missing
-            created_at: authUser.created_at || new Date().toISOString(),
-        });
+      const [profileResult, itemsResult, allProjectsResult] = await Promise.allSettled([
+        getCurrentUserProfile(),
+        getInboxItems(),
+        getProjects() // Récupère tous les projets accessibles (pour le sélecteur de CreateTicketModal)
+      ]);
+
+      // Profil
+      if (profileResult.status === 'fulfilled' && profileResult.value) {
+        setCurrentUser(profileResult.value);
       } else {
-          setCurrentUser(userProfile);
+        console.warn("InboxPage: Failed to fetch/find current user profile.", profileResult.status === 'rejected' ? profileResult.reason : '');
+        if (authUser) setCurrentUser({ id: authUser.id, email: authUser.email || '', name: authUser.user_metadata?.name || 'Utilisateur', avatar: authUser.user_metadata?.avatar_url || '', role: 'collaborator', created_at: new Date().toISOString() });
       }
 
+      // Items Inbox
+      if (itemsResult.status === 'rejected') throw itemsResult.reason;
+      const items = itemsResult.value || [];
+      setInboxItems(items);
 
-      // Fetch inbox items (RLS should apply if configured)
-      const items = await getInboxItems();
-      setInboxItems(items || []);
+      // Projets pour la modal de création de ticket
+      if (allProjectsResult.status === 'rejected') {
+        console.error("Error fetching all projects for modal selector:", allProjectsResult.reason);
+        setAvailableProjectsForModal([]);
+      } else {
+        setAvailableProjectsForModal(
+          (allProjectsResult.value || []).map(p => ({ id: p.id, name: p.name }))
+        );
+      }
 
-      // Batch fetch related data efficiently
-      const userIds = new Set<string>();
-      const projectIds = new Set<string>();
-      (items || []).forEach(item => {
-        if (item.created_by) userIds.add(item.created_by);
-        if (item.project_id) projectIds.add(item.project_id);
+      // Construction des maps pour affichage des détails
+      const userIdsToFetch = new Set<string>();
+      const projectIdsFromItems = new Set<string>();
+      items.forEach(item => {
+        if (item.created_by) userIdsToFetch.add(item.created_by);
+        if (item.project_id) projectIdsFromItems.add(item.project_id);
       });
+      const currentUserId = (profileResult.status === 'fulfilled' && profileResult.value?.id) || authUser?.id;
+      if (currentUserId) userIdsToFetch.add(currentUserId);
 
-      // Add current user ID just in case it's needed but not in items
-      if (userProfile?.id) userIds.add(userProfile.id);
-      else if (authUser?.id) userIds.add(authUser.id);
+      let userLookup: Record<string, UserType> = {};
+      let projectLookup: Record<string, ProjectTypeForSelect> = {};
 
+      const mapPromises = [];
+      if (userIdsToFetch.size > 0) mapPromises.push(supabase.from('users').select('id, name, avatar, email').in('id', Array.from(userIdsToFetch)));
+      else mapPromises.push(Promise.resolve({ data: [], error: null }));
 
-      // Fetch users involved
-      let userLookup: Record<string, User> = {};
-      if (userIds.size > 0) {
-        const { data: usersData, error: usersError } = await supabase
-          .from('users')
-          .select('*')
-          .in('id', Array.from(userIds));
-        if (usersError) throw usersError;
-        (usersData || []).forEach(u => userLookup[u.id] = u);
-      }
+      if (projectIdsFromItems.size > 0) mapPromises.push(supabase.from('projects').select('id, name').in('id', Array.from(projectIdsFromItems)));
+      else mapPromises.push(Promise.resolve({ data: [], error: null }));
+
+      const [usersResponse, projectsLinkedResponse] = await Promise.all(mapPromises);
+
+      if (usersResponse.error) throw usersResponse.error;
+      if (projectsLinkedResponse.error) throw projectsLinkedResponse.error;
+
+      (usersResponse.data || []).forEach((u: any) => userLookup[u.id] = u as UserType); // Cast temporaire
+      (projectsLinkedResponse.data || []).forEach((p: any) => projectLookup[p.id] = p as ProjectTypeForSelect);
+
       setUsersMap(userLookup);
+      setProjectsLinkedMap(projectLookup);
 
-      // Fetch projects involved
-      let projectLookup: Record<string, Project> = {};
-      if (projectIds.size > 0) {
-         const { data: projectsData, error: projectsError } = await supabase
-           .from('projects')
-           .select('*')
-           .in('id', Array.from(projectIds));
-         if (projectsError) throw projectsError;
-        (projectsData || []).forEach(p => projectLookup[p.id] = p);
-      }
-      setProjectsMap(projectLookup);
-
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching inbox data:', err);
-      setError(`Failed to load inbox data: ${err.message || 'Unknown error'}`);
+      setError(`Échec du chargement des données de l'inbox: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [authUser]);
 
+  useEffect(() => { fetchData(); }, [fetchData]);
 
-  useEffect(() => {
-    fetchData();
-  }, []); // Fetch on mount
-
+  // --- Handlers ---
   const formatDate = (dateString: string | null): string => {
-     if (!dateString) return '';
+    if (!dateString) return '';
     const date = new Date(dateString);
-    // ... (keep existing formatting logic) ...
-     const now = new Date();
-     const isToday = date.toDateString() === now.toDateString();
-     if (isToday) {
-       return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(date);
-     }
-     return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(date);
+    const now = new Date();
+    if (date.toDateString() === now.toDateString()) return new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' }).format(date);
+    return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(date);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleNewItemSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newMessage.trim() || !currentUser?.id) { // Check for current user ID
-        setError("Cannot create item: user not identified.");
-        return;
+    const currentAuthUserId = currentUser?.id || authUser?.id;
+    if (!newMessage.trim() || !currentAuthUserId) {
+      setError("Message vide ou utilisateur non identifié.");
+      return;
     }
-    setCreating(true);
+    setCreatingItem(true);
     setError(null);
-
     try {
-      // Use createInboxItem helper which includes created_by automatically now
-      const newItemData = await createInboxItem({
-        content: newMessage,
-        // project_id: null, // Set this if you add project linking to the form
-      });
-
-      if (newItemData) {
-        // Add the new item optimistically, refetch users/projects if needed
-        setInboxItems(prevItems => [newItemData, ...prevItems]);
-        setNewMessage('');
-
-        // Ensure the creator's data is available if not already fetched
-        if (!usersMap[newItemData.created_by] && currentUser) {
-            setUsersMap(prev => ({ ...prev, [currentUser.id]: currentUser }));
-        }
-      } else {
-          throw new Error("Failed to create item in database.");
+      const newItemData = await createInboxItem({ content: newMessage /* , project_id: (si on ajoute un sélecteur ici) */ });
+      setInboxItems(prevItems => [newItemData, ...prevItems].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
+      setNewMessage('');
+      if (!usersMap[newItemData.created_by] && currentUser) { // Assure que le créateur est dans la map
+          setUsersMap(prev => ({ ...prev, [currentAuthUserId]: currentUser }));
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error creating inbox item:', err);
-      setError(`Failed to save item: ${err.message || 'Unknown error'}`);
+      setError(`Échec de la création de la note: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
     } finally {
-        setCreating(false);
+      setCreatingItem(false);
     }
   };
 
-  // --- Basic Delete Functionality ---
-  const handleDelete = async (itemId: string) => {
-     // TODO: Add a confirmation dialog for production
-     // if (!window.confirm("Supprimer cet élément définitivement ?")) return;
+  const handleDeleteItem = async (itemId: string) => {
+    if (deletingItemId) return;
+    if (!window.confirm("Voulez-vous vraiment supprimer cette note ?")) return;
 
+    setDeletingItemId(itemId);
     setError(null);
     try {
-        const { error: deleteError } = await supabase
-            .from('inbox_items')
-            .delete()
-            .eq('id', itemId);
-
-        if (deleteError) throw deleteError;
-
-        // Remove item from local state
-        setInboxItems(prevItems => prevItems.filter(item => item.id !== itemId));
-
-    } catch (err: any) {
-        console.error('Error deleting inbox item:', err);
-        setError(`Failed to delete item: ${err.message || 'Unknown error'}`);
+      const { error: deleteError } = await supabase.from('inbox_items').delete().eq('id', itemId);
+      if (deleteError) throw deleteError;
+      setInboxItems(prevItems => prevItems.filter(item => item.id !== itemId));
+    } catch (err) {
+      console.error('Error deleting inbox item:', err);
+      setError(`Échec de la suppression: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
+    } finally {
+      setDeletingItemId(null);
     }
   };
 
-  // --- Placeholder Actions ---
-  const handleComment = (itemId: string) => {
-      console.log("TODO: Implement commenting for item:", itemId);
-      alert("Fonctionnalité de commentaire non implémentée.");
+  const handleCommentOnItem = (itemId: string) => {
+    alert("Fonctionnalité de commentaire sur les notes non implémentée.");
   };
 
-  const handleCreateTask = (item: InboxItem) => {
-      console.log("TODO: Implement create task from inbox item:", item);
-      alert("Fonctionnalité 'Créer une tâche' non implémentée.");
-      // Needs a modal/form to collect task details (project, assignee, priority, etc.)
-      // Then call `createTicket` helper
+  const handleOpenCreateTaskModal = (item: InboxItemType) => {
+    setSelectedInboxItemForTicket(item);
+    setShowCreateTicketModal(true);
+    setError(null); // Reset l'erreur principale de la page
   };
 
-
+  // --- Render Logic ---
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
@@ -203,34 +195,43 @@ const InboxPage: React.FC = () => {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
+      {/* Affichage Erreur Globale (Fetch, Create, Delete) */}
       {error && (
-        <div className="mb-6 p-4 bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg flex items-center gap-3">
-          <AlertCircle size={20} />
-          <span>{error}</span>
+        <div className="mb-6 p-3 bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg flex items-center gap-2 text-sm">
+          <AlertCircle size={18} />
+          <span className="flex-1">{error}</span>
+          <button onClick={() => setError(null)} className="text-red-alert/70 hover:text-red-alert flex-shrink-0"><IconX size={16}/></button>
         </div>
       )}
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-orbitron text-star-white mb-2">Inbox</h1>
-        <p className="text-moon-gray">Idées, demandes, et notes à trier plus tard.</p>
+      {/* Header Page */}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-orbitron text-star-white mb-2">Inbox</h1>
+          <p className="text-moon-gray">Idées, demandes et notes à trier.</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={fetchData} iconLeft={<RefreshCw size={16}/>} disabled={loading || creatingItem || !!deletingItemId}>
+          {loading ? 'Chargement...' : 'Rafraîchir'}
+        </Button>
       </div>
 
-      {/* Creation Form */}
-      <div className="mb-8">
-        <form onSubmit={handleSubmit} className="bg-deep-space rounded-xl p-4 border border-white/10">
+      {/* Formulaire de Création d'Item Inbox */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+        <form onSubmit={handleNewItemSubmit} className="mb-10 bg-deep-space rounded-xl p-4 border border-white/10 shadow-lg">
           <div className="flex items-start gap-3 mb-3">
             <Avatar
-              src={currentUser?.avatar || 'DEFAULT_AVATAR_URL'} // Use default if no user/avatar
-              alt={currentUser?.name || 'Utilisateur'}
+              src={currentUser?.avatar || authUser?.user_metadata?.avatar_url || ''}
+              alt={currentUser?.name || authUser?.user_metadata?.name || 'Utilisateur'}
               size="md"
             />
             <div className="flex-1">
               <textarea
                 value={newMessage}
                 onChange={e => setNewMessage(e.target.value)}
-                placeholder={currentUser ? "Notez une idée, demande ou question..." : "Connectez-vous pour ajouter des notes"}
-                className="w-full bg-space-black min-h-[80px] rounded-lg p-3 text-star-white placeholder:text-moon-gray focus:outline-none focus:ring-1 focus:ring-nebula-purple border border-white/10"
-                disabled={!currentUser || creating}
+                placeholder={(currentUser || authUser) ? "Écrivez une note rapide, une idée, une tâche à faire..." : "Connectez-vous pour ajouter des notes"}
+                className={`w-full bg-space-black min-h-[70px] rounded-lg p-3 text-star-white placeholder:text-moon-gray focus:outline-none focus:ring-1 border transition-all ${!(currentUser || authUser) || creatingItem ? 'border-white/5 bg-white/5 cursor-not-allowed opacity-70' : 'border-white/10 focus:ring-nebula-purple focus:border-nebula-purple hover:border-white/20'}`}
+                disabled={!(currentUser || authUser) || creatingItem}
+                rows={3}
               />
             </div>
           </div>
@@ -238,99 +239,98 @@ const InboxPage: React.FC = () => {
             <Button
               type="submit"
               variant="primary"
-              iconRight={<Send size={16} />}
-              disabled={!newMessage.trim() || !currentUser || creating}
+              iconRight={creatingItem ? null : <Send size={16} />}
+              disabled={!newMessage.trim() || !(currentUser || authUser) || creatingItem}
             >
-              {creating ? 'Envoi...' : 'Envoyer'}
-            </Button>
+              {creatingItem ? 'Envoi...' : "Ajouter à l'Inbox"}            </Button>
           </div>
         </form>
-      </div>
+      </motion.div>
 
-      {/* Inbox Items List */}
+      {/* Liste des Items Inbox */}
+      {inboxItems.length === 0 && !loading && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 text-center">
+            <MessageSquare size={48} className="mx-auto text-moon-gray/50 mb-4" />
+            <h3 className="text-lg font-medium text-star-white mb-1">Votre inbox est vide</h3>
+            <p className="text-sm text-moon-gray">Utilisez le formulaire ci-dessus pour capturer vos idées.</p>
+        </motion.div>
+      )}
+
       <div className="space-y-4">
-        {inboxItems.length === 0 && !loading && (
-             <p className="text-moon-gray col-span-full text-center py-8">Votre inbox est vide.</p>
-        )}
         {inboxItems.map((item, index) => {
           const creator = usersMap[item.created_by];
-          const project = item.project_id ? projectsMap[item.project_id] : null;
+          const project = item.project_id ? projectsLinkedMap[item.project_id] : null;
+          const isDeletingThisItem = deletingItemId === item.id;
 
           return (
             <motion.div
               key={item.id}
+              layout // Pour animation si item supprimé
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 * index }}
-              className="bg-deep-space rounded-xl p-4 border border-white/10 group relative" // Added relative for absolute positioning of delete
+              exit={{ opacity: 0, x: -50, transition: { duration: 0.2 } }}
+              transition={{ delay: index * 0.03, duration: 0.3 }}
+              className={`bg-deep-space rounded-xl p-4 border group relative transition-all duration-300 hover:shadow-nebula-purple/20 ${isDeletingThisItem ? 'opacity-40 scale-95 border-red-alert/30' : 'border-white/10 hover:border-white/20'}`}
             >
               <div className="flex items-start gap-3">
-                 <Avatar
-                   src={creator?.avatar || 'DEFAULT_AVATAR_URL'}
-                   alt={creator?.name || 'Utilisateur inconnu'}
-                   size="md"
-                 />
-                <div className="flex-1">
+                 <Avatar src={creator?.avatar || ''} alt={creator?.name || 'Inconnu'} size="md" />
+                <div className="flex-1 min-w-0"> {/* min-w-0 pour que truncate fonctionne */}
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-medium text-star-white">
-                      {creator?.name || 'Utilisateur inconnu'}
-                    </h3>
-                    <span className="text-xs text-moon-gray">{formatDate(item.created_at)}</span>
+                    <h3 className="font-medium text-star-white truncate" title={creator?.name}>{creator?.name || 'Utilisateur inconnu'}</h3>
+                    <span className="text-xs text-moon-gray flex-shrink-0 ml-2" title={new Date(item.created_at).toLocaleString('fr-FR')}>{formatDate(item.created_at)}</span>
                   </div>
-                  <p className="text-star-white mb-3 whitespace-pre-wrap">{item.content}</p> {/* Use pre-wrap for line breaks */}
-
+                  <p className="text-star-white/90 mb-3 whitespace-pre-wrap text-sm break-words">{item.content}</p>
                   {project && (
                     <div className="flex items-center mt-2">
-                      <span className="bg-nebula-purple/20 text-nebula-purple text-xs px-2 py-1 rounded-full">
-                        Projet: {project.name || 'Projet inconnu'}
+                      <span className="bg-nebula-purple/10 text-nebula-purple text-xs px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                        <Briefcase size={12} /> {project.name || 'Projet inconnu'}
                       </span>
                     </div>
                   )}
                 </div>
               </div>
 
-               {/* Actions */}
-               <div className="mt-3 pt-3 border-t border-white/5 flex justify-between items-center">
-                 <div> {/* Group left buttons */}
-                   <Button
-                     variant="ghost"
-                     size="sm"
-                     iconLeft={<MessageSquare size={14} />}
-                     onClick={() => handleComment(item.id)}
-                     className="text-moon-gray hover:text-star-white"
-                     title="Commenter (non implémenté)"
-                   >
-                     Commenter
-                   </Button>
-                   <Button
-                     variant="ghost"
-                     size="sm"
-                     iconLeft={<Plus size={14} />}
-                     onClick={() => handleCreateTask(item)}
-                     className="text-moon-gray hover:text-star-white ml-2"
-                     title="Créer une tâche (non implémenté)"
-                   >
-                     Créer une tâche
-                   </Button>
-                 </div>
-
-                 {/* Delete Button - positioned absolutely on hover */}
-                 <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(item.id)}
-                        className="text-red-alert/70 hover:text-red-alert hover:bg-red-alert/10 p-1" // Danger styling
-                        title="Supprimer l'élément"
-                    >
-                        <Trash2 size={16} />
-                    </Button>
-                 </div>
+               {/* Actions sur l'item */}
+               <div className="mt-3 pt-3 border-t border-white/5 flex justify-start items-center gap-2">
+                 <Button variant="ghost" size="sm" iconLeft={<MessageSquare size={14} />} onClick={() => !isDeletingThisItem && handleCommentOnItem(item.id)} className="text-moon-gray hover:text-star-white" title="Commenter (non implémenté)" disabled={isDeletingThisItem || showCreateTicketModal}>Commenter</Button>
+                 <Button variant="ghost" size="sm" iconLeft={<Plus size={14} />} onClick={() => !isDeletingThisItem && handleOpenCreateTaskModal(item)} className="text-moon-gray hover:text-star-white" title="Créer une tâche à partir de cette note" disabled={isDeletingThisItem || showCreateTicketModal}>Créer tâche</Button>
+                 {/* Placeholder pour un bouton "Lier à un projet" */}
+                 {/* {!item.project_id && <Button variant="ghost" size="sm" iconLeft={<Briefcase size={14}/>} className="text-moon-gray hover:text-star-white">Lier projet</Button>} */}
+                 <div className="flex-grow"></div> {/* Espace pour pousser le bouton supprimer à droite */}
+                 <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item.id)} className={`text-red-alert/60 hover:text-red-alert hover:bg-red-alert/10 p-1.5 ${isDeletingThisItem ? 'cursor-wait' : ''}`} title="Supprimer la note" disabled={!!deletingItemId || showCreateTicketModal}>
+                   {isDeletingThisItem ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16} />}
+                 </Button>
                </div>
             </motion.div>
           );
         })}
       </div>
+
+      {/* Modale de Création de Ticket */}
+      {showCreateTicketModal && selectedInboxItemForTicket && (
+        <CreateTicketModal
+          isOpen={showCreateTicketModal}
+          onClose={() => {
+            setShowCreateTicketModal(false);
+            setSelectedInboxItemForTicket(null);
+          }}
+          projectId={selectedInboxItemForTicket.project_id || undefined}
+          projectName={selectedInboxItemForTicket.project_id ? projectsLinkedMap[selectedInboxItemForTicket.project_id]?.name : undefined}
+          availableProjects={availableProjectsForModal}
+          defaultTitle={selectedInboxItemForTicket.content.substring(0, 70)}
+          defaultDescription={selectedInboxItemForTicket.content}
+          initialStatus={TicketStatus.BACKLOG}
+          onTicketCreated={(newTicket: TicketType) => {
+            console.log("Ticket créé depuis l'inbox:", newTicket);
+            alert(`Ticket "${newTicket.title}" créé avec succès pour le projet "${projectsLinkedMap[newTicket.project_id]?.name || 'Non spécifié'}" !`);
+            if(selectedInboxItemForTicket){ // Sécurité
+                 handleDeleteItem(selectedInboxItemForTicket.id);
+            }
+            setShowCreateTicketModal(false);
+            setSelectedInboxItemForTicket(null);
+          }}
+        />
+      )}
     </div>
   );
 };

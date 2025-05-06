@@ -1,0 +1,15 @@
+# Supabase CLI Configuration
+# Located in the `supabase/` directory of your project.
+
+# Link to your remote project
+project_id = "qkomyycebwaxxxqphwpg"
+
+[db]
+# Local Postgres container port (if using supabase start locally)
+port = 54322
+# Postgres major version (should match your Supabase project)
+major_version = 15
+
+[db.migrations]
+# Directory containing your SQL migration files
+schema_paths = ["./supabase/migrations"]

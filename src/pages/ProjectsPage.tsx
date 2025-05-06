@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
-// Removed Link import as ProjectCard handles navigation
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, X, AlertCircle } from 'lucide-react'; // Added AlertCircle
+import { Plus, Search, X, AlertCircle } from 'lucide-react';
 import ProjectCard from '../components/projects/ProjectCard';
 import Button from '../components/ui/Button';
-import { getProjects, createProject } from '../lib/supabase'; // Supabase helpers
+import { getProjects, createProject } from '../lib/supabase'; // Supabase helpers, createProject throws now
 import { useAuth } from '../contexts/AuthContext'; // Auth context
 import { Database } from '../types/supabase';
 
@@ -12,46 +11,49 @@ type Project = Database['public']['Tables']['projects']['Row'];
 // Type for the new project form data (excluding fields set automatically)
 type NewProjectData = Omit<Database['public']['Tables']['projects']['Insert'], 'id' | 'owner_id' | 'created_at' | 'updated_at'>;
 
-// Rename component for clarity and convention
 const ProjectsPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  // --- State for Loading/Error/Success ---
+  const [loading, setLoading] = useState(true); // Loading initial project list
+  const [error, setError] = useState<string | null>(null); // Error for initial project list
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newProject, setNewProject] = useState<NewProjectData>({ // Use the specific type
+  const [newProject, setNewProject] = useState<NewProjectData>({
     name: '',
     description: '',
     client_name: '',
-    deadline: null // Use null for optional fields
+    deadline: null, // Use null for optional date/string fields
+    is_public: false // Initialize new fields if needed
   });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null); // Specific error for creation
+  const [creating, setCreating] = useState(false); // Loading state for project creation
+  const [createError, setCreateError] = useState<string | null>(null); // Error state for project creation
 
   const { user } = useAuth(); // Get authenticated user
 
+  // --- Fetch Projects ---
   const fetchProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+    setLoading(true); // Start loading
+    setError(null);   // Reset error
     try {
-      // getProjects should ideally be protected by RLS
+      // getProjects now throws on error
       const data = await getProjects();
-      setProjects(data || []); // Handle null case
-      setFilteredProjects(data || []);
-    } catch (err: any) {
+      setProjects(data || []);
+      setFilteredProjects(data || []); // Initialize filtered list too
+    } catch (err) { // Catch the thrown error
       console.error('Erreur lors de la récupération des projets :', err);
-      setError(`Impossible de charger les projets: ${err.message}`);
+      setError(err instanceof Error ? err.message : 'Impossible de charger les projets.'); // Set error state
     } finally {
-      setLoading(false);
+      setLoading(false); // Finish loading
     }
-  }, []); // No dependencies needed if getProjects is stable
+  }, []);
 
   useEffect(() => {
     fetchProjects();
   }, [fetchProjects]);
 
-  // Filter projects based on search query
+  // --- Filter Projects ---
   useEffect(() => {
     if (!searchQuery) {
       setFilteredProjects(projects);
@@ -60,27 +62,32 @@ const ProjectsPage: React.FC = () => {
     const lowerCaseQuery = searchQuery.toLowerCase();
     const filtered = projects.filter(project =>
       project.name.toLowerCase().includes(lowerCaseQuery) ||
-      (project.description && project.description.toLowerCase().includes(lowerCaseQuery)) || // Check if description exists
+      (project.description && project.description.toLowerCase().includes(lowerCaseQuery)) ||
       (project.client_name && project.client_name.toLowerCase().includes(lowerCaseQuery))
     );
     setFilteredProjects(filtered);
   }, [searchQuery, projects]);
 
+  // --- Handlers ---
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
   };
 
-   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        setNewProject(prev => ({ ...prev, [name]: value || null })); // Set null if value is empty for optional fields like deadline/client
-        setCreateError(null); // Clear error on input change
-    };
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
 
-   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-       setNewProject(prev => ({ ...prev, deadline: e.target.value ? e.target.value : null })); // Store date as string or null
-       setCreateError(null);
-   };
+    // Handle checkbox specifically
+    if (type === 'checkbox') {
+        const { checked } = e.target as HTMLInputElement;
+        setNewProject(prev => ({ ...prev, [name]: checked }));
+    } else {
+        // Set null for empty optional text/date fields
+        const finalValue = (name === 'client_name' || name === 'deadline') && value === '' ? null : value;
+        setNewProject(prev => ({ ...prev, [name]: finalValue }));
+    }
 
+    setCreateError(null); // Clear error on input change
+  };
 
   // Handle project creation submit
   const handleCreateProjectSubmit = async (e: React.FormEvent) => {
@@ -91,51 +98,45 @@ const ProjectsPage: React.FC = () => {
       setCreateError("Le nom et la description du projet sont requis.");
       return;
     }
-
-    if (!user) {
-      setCreateError("Utilisateur non connecté. Impossible de créer le projet.");
+    if (!user) { // Should not happen if page is protected, but safe check
+      setCreateError("Utilisateur non connecté. Reconnectez-vous.");
       return;
     }
 
-    setCreating(true);
+    setCreating(true); // Start creation loading state
 
-    // Format data for Supabase, including owner_id
-    const projectDataToInsert = {
-      ...newProject,
-      // Ensure deadline is null if empty, otherwise keep as string (Supabase handles conversion)
-      deadline: newProject.deadline || null,
-      client_name: newProject.client_name || null,
-      owner_id: user.id, // Add owner ID
-      // created_at/updated_at are handled by DB defaults or triggers now
+    // Prepare data for insertion (owner_id is now added inside createProject helper)
+    const projectDataToInsert: NewProjectData = {
+      name: newProject.name,
+      description: newProject.description,
+      client_name: newProject.client_name || null, // Ensure null if empty
+      deadline: newProject.deadline || null,     // Ensure null if empty
+      is_public: newProject.is_public || false,  // Ensure boolean
     };
 
     try {
-      // Use the createProject helper function
+      // createProject throws on error
       const created = await createProject(projectDataToInsert);
 
-      if (created) {
-        // Add to state and close modal
-        setProjects(prev => [created, ...prev]);
-        // Also update filtered list if search is not active or if it matches
-        if (!searchQuery || created.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-             setFilteredProjects(prev => [created, ...prev]);
-        }
-        setShowCreateModal(false);
-        // Reset form
-        setNewProject({ name: '', description: '', client_name: '', deadline: null });
-      } else {
-          // Error should have been logged inside createProject
-          setCreateError("La création du projet a échoué (vérifiez la console).");
+      // If successful:
+      setProjects(prev => [created, ...prev]); // Update full list
+      // Update filtered list only if it matches current filter or no filter active
+      if (!searchQuery || created.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+           setFilteredProjects(prev => [created, ...prev]);
       }
-    } catch (err: any) {
+      setShowCreateModal(false); // Close modal
+      // Reset form state
+      setNewProject({ name: '', description: '', client_name: '', deadline: null, is_public: false });
+
+    } catch (err) { // Catch error from createProject
       console.error("Erreur lors de la création du projet:", err);
-      setCreateError(`Erreur: ${err.message || 'Une erreur inattendue est survenue.'}`);
+      setCreateError(err instanceof Error ? err.message : 'Une erreur inattendue est survenue.'); // Set creation error state
     } finally {
-      setCreating(false);
+      setCreating(false); // End creation loading state
     }
   };
 
-  // --- TODO: Add Edit/Delete Handlers ---
+  // --- Placeholder Handlers ---
    const handleEditProject = (project: Project) => {
        console.log("TODO: Implement Edit Project modal/logic for:", project.id);
        alert("Fonctionnalité d'édition de projet non implémentée.");
@@ -143,43 +144,47 @@ const ProjectsPage: React.FC = () => {
 
    const handleDeleteProject = async (projectId: string) => {
        console.log("TODO: Implement Delete Project logic (with confirmation) for:", projectId);
-        // if (!window.confirm("Supprimer ce projet et toutes ses tâches associées ? Cette action est irréversible.")) return;
-        // try {
-        //    // Call a Supabase function or perform cascaded delete if set up
-        //    // const { error } = await supabase.from('projects').delete().eq('id', projectId);
-        //    // if (error) throw error;
-        //    // Remove from state: setProjects(prev => prev.filter(p => p.id !== projectId));
-        // } catch (err) { console.error...) }
        alert("Fonctionnalité de suppression de projet non implémentée.");
    };
 
 
   // --- Render Logic ---
 
+  // 1. Handle Initial Loading State
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
-        {/* Consistent loading spinner */}
         <div className="w-12 h-12 rounded-full border-4 border-nebula-purple/30 border-t-nebula-purple animate-spin"></div>
       </div>
     );
   }
 
+  // 2. Handle Initial Error State
+  if (error) {
+    return (
+        <div className="p-8 text-center">
+             <div className="p-4 inline-flex flex-col items-center bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg gap-3">
+               <AlertCircle size={32} />
+               <span>{error}</span>
+                {/* Add a retry button */}
+                <Button variant="outline" size="sm" onClick={fetchProjects}>
+                  Réessayer
+                </Button>
+             </div>
+        </div>
+    );
+  }
+
+  // 3. Render Page Content (if no initial loading or error)
   return (
     <div className="p-8">
-       {error && ( // Display fetch errors
-         <div className="mb-6 p-4 bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg flex items-center gap-3">
-           <AlertCircle size={20} />
-           <span>{error}</span>
-         </div>
-       )}
-
       {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div>
           <h1 className="text-3xl font-orbitron text-star-white mb-2">Projets</h1>
           <p className="text-moon-gray">Gérez et suivez tous vos projets</p>
         </div>
+        {/* Button to open create modal */}
         <Button
           variant="primary"
           iconLeft={<Plus size={16} />}
@@ -190,7 +195,7 @@ const ProjectsPage: React.FC = () => {
       </div>
 
       {/* Search Bar */}
-      <div className="relative mb-6 max-w-md"> {/* Limit search bar width */}
+      <div className="relative mb-6 max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-moon-gray pointer-events-none" size={18} />
         <input
           type="text"
@@ -201,10 +206,10 @@ const ProjectsPage: React.FC = () => {
         />
       </div>
 
-      {/* Projects Grid */}
-      {filteredProjects.length === 0 && !loading && !error ? (
+      {/* Projects Grid or Empty State */}
+      {filteredProjects.length === 0 ? (
         <div className="text-center py-12 text-moon-gray">
-           {searchQuery ? `Aucun projet trouvé pour "${searchQuery}".` : "Vous n'avez accès à aucun projet pour le moment."}
+           {searchQuery ? `Aucun projet trouvé pour "${searchQuery}".` : "Vous n'avez accès à aucun projet pour le moment ou aucun projet n'a été créé."}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -213,16 +218,14 @@ const ProjectsPage: React.FC = () => {
               key={project.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 * index }} // Stagger animation slightly
+              transition={{ delay: 0.05 * index }}
             >
-              {/* Pass Edit/Delete handlers down if actions are on the card */}
               <ProjectCard project={project} />
-               {/* Example: Add buttons below card if needed
-               <div className="mt-2 flex gap-2">
-                   <Button size="sm" variant="outline" onClick={() => handleEditProject(project)}>Edit</Button>
-                   <Button size="sm" variant="danger" onClick={() => handleDeleteProject(project.id)}>Delete</Button>
-               </div>
-               */}
+              {/* Placeholder for Edit/Delete buttons if needed */}
+              {/* <div className="mt-2 flex gap-2 justify-end">
+                   <Button size="sm" variant="outline" onClick={() => handleEditProject(project)} iconLeft={<Edit size={14}/>}/>
+                   <Button size="sm" variant="danger" onClick={() => handleDeleteProject(project.id)} iconLeft={<Trash2 size={14}/>}/>
+               </div> */}
             </motion.div>
           ))}
         </div>
@@ -238,25 +241,30 @@ const ProjectsPage: React.FC = () => {
             exit={{ scale: 0.95, opacity: 0, y: -20 }}
             transition={{ duration: 0.2 }}
           >
+            {/* Modal Header */}
             <div className="p-5 border-b border-white/10 flex justify-between items-center">
               <h2 className="text-xl font-orbitron text-star-white">Nouveau projet</h2>
               <button
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => !creating && setShowCreateModal(false)} // Prevent closing while creating
                 className="text-moon-gray hover:text-star-white disabled:opacity-50"
-                disabled={creating}
+                disabled={creating} // Disable close button while creating
                 aria-label="Fermer"
               >
                 <X size={24} />
               </button>
             </div>
 
+            {/* Modal Form */}
             <form onSubmit={handleCreateProjectSubmit} className="p-6">
-               {createError && ( // Display creation errors inside modal
-                 <div className="mb-4 p-3 bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg flex items-center gap-2">
+               {/* Display creation error */}
+               {createError && (
+                 <div className="mb-4 p-3 bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg flex items-center gap-2 text-sm">
                    <AlertCircle size={18} />
                    <span>{createError}</span>
                  </div>
                )}
+
+              {/* Form Fields */}
               <div className="space-y-4">
                 {/* Name Input */}
                 <div>
@@ -265,14 +273,14 @@ const ProjectsPage: React.FC = () => {
                   </label>
                   <input
                     id="projectName"
-                    name="name" // Match state key
+                    name="name"
                     type="text"
                     value={newProject.name}
                     onChange={handleInputChange}
-                    className="w-full bg-space-black border border-white/10 rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:border-nebula-purple focus:ring-1 focus:ring-nebula-purple"
+                    className={`w-full bg-space-black border rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:ring-1 ${creating ? 'border-white/5 bg-white/5 cursor-wait' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple'}`}
                     placeholder="ex: Refonte site web V2"
                     required
-                    disabled={creating}
+                    disabled={creating} // Disable input while creating
                   />
                 </div>
                 {/* Description Input */}
@@ -282,13 +290,13 @@ const ProjectsPage: React.FC = () => {
                   </label>
                   <textarea
                     id="projectDesc"
-                    name="description" // Match state key
+                    name="description"
                     value={newProject.description}
                     onChange={handleInputChange}
-                    className="w-full bg-space-black border border-white/10 rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:border-nebula-purple focus:ring-1 focus:ring-nebula-purple min-h-[100px] resize-y"
+                    className={`w-full bg-space-black border rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:ring-1 min-h-[100px] resize-y ${creating ? 'border-white/5 bg-white/5 cursor-wait' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple'}`}
                     placeholder="Description détaillée des objectifs, livrables..."
                     required
-                    disabled={creating}
+                    disabled={creating} // Disable input while creating
                   />
                 </div>
                 {/* Client Name Input */}
@@ -298,13 +306,13 @@ const ProjectsPage: React.FC = () => {
                   </label>
                   <input
                     id="projectClient"
-                    name="client_name" // Match state key
+                    name="client_name"
                     type="text"
-                    value={newProject.client_name || ''} // Handle null
+                    value={newProject.client_name || ''}
                     onChange={handleInputChange}
-                    className="w-full bg-space-black border border-white/10 rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:border-nebula-purple focus:ring-1 focus:ring-nebula-purple"
+                    className={`w-full bg-space-black border rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:ring-1 ${creating ? 'border-white/5 bg-white/5 cursor-wait' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple'}`}
                     placeholder="Nom du client (optionnel)"
-                    disabled={creating}
+                    disabled={creating} // Disable input while creating
                   />
                 </div>
                 {/* Deadline Input */}
@@ -314,14 +322,33 @@ const ProjectsPage: React.FC = () => {
                   </label>
                   <input
                     id="projectDeadline"
-                    name="deadline" // Match state key
+                    name="deadline"
                     type="date"
-                    value={newProject.deadline || ''} // Handle null
-                    onChange={handleDateChange} // Use specific handler for date potentially
-                    className="w-full bg-space-black border border-white/10 rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:border-nebula-purple focus:ring-1 focus:ring-nebula-purple"
-                    disabled={creating}
+                    value={newProject.deadline || ''}
+                    onChange={handleInputChange} // Utilise le même handler
+                    className={`w-full bg-space-black border rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:ring-1 ${creating ? 'border-white/5 bg-white/5 cursor-wait' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple'}`}
+                    disabled={creating} // Disable input while creating
                   />
                 </div>
+                 {/* Is Public Toggle */}
+                 <div className="flex items-center justify-between pt-2">
+                    <label htmlFor="isPublic" className="text-sm text-moon-gray">
+                        Projet Public ?
+                        <span className="block text-xs text-moon-gray/70">Visible par tous les utilisateurs authentifiés.</span>
+                    </label>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        id="isPublic"
+                        name="is_public"
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={newProject.is_public || false}
+                        onChange={handleInputChange}
+                        disabled={creating}
+                      />
+                      <div className={`w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer ${creating ? 'cursor-wait' : ''} peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-white after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-nebula-purple`}></div>
+                    </label>
+                 </div>
               </div>
 
               {/* Modal Footer Actions */}
@@ -329,18 +356,18 @@ const ProjectsPage: React.FC = () => {
                 <Button
                   variant="ghost"
                   onClick={() => setShowCreateModal(false)}
-                  type="button" // Important: prevent form submission
-                  disabled={creating}
+                  type="button"
+                  disabled={creating} // Disable cancel button while creating
                 >
                   Annuler
                 </Button>
                 <Button
                   variant="primary"
                   type="submit"
-                  // Basic validation for enabling button
+                  // Disable submit button while creating or if required fields are empty
                   disabled={creating || !newProject.name?.trim() || !newProject.description?.trim()}
                 >
-                  {creating ? 'Création...' : 'Créer le projet'}
+                  {creating ? 'Création...' : 'Créer le projet'} {/* Change button text while creating */}
                 </Button>
               </div>
             </form>
@@ -351,4 +378,4 @@ const ProjectsPage: React.FC = () => {
   );
 };
 
-export default ProjectsPage; // Export with the correct name
+export default ProjectsPage;

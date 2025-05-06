@@ -11,21 +11,8 @@ import NotificationsPage from './pages/notifications/NotificationsPage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import LoginPage from './pages/auth/LoginPage';
-import { useInitializeApp } from './hooks/useInitializeApp';
 
 function App() {
-  const { initializing } = useInitializeApp();
-  
-  if (initializing) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-space-black">
-        <div className="w-16 h-16 rounded-full border-4 border-nebula-purple/30 border-t-nebula-purple animate-spin mb-4"></div>
-        <h2 className="text-star-white text-xl font-orbitron">Initialization en cours...</h2>
-        <p className="text-moon-gray mt-2">Préparation de l'environnement</p>
-      </div>
-    );
-  }
-
   return (
     <AuthProvider>
       <BrowserRouter>
