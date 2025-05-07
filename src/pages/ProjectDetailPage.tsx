@@ -2,23 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import {
-  Calendar,
-  ListFilter,
-  Users,
-  Layers,
-  AlertTriangle,
-  Plus,
-  AlertCircle,
-  UserCog,
-  RefreshCw,
-  X as IconX // Renommé pour éviter conflit si X est utilisé ailleurs
-} from 'lucide-react';
-import { TicketStatus, TicketStatusLabels } from '../types'; // Assure-toi que ce chemin est correct
+import { /* ... tes imports lucide ... */ Calendar, ListFilter, Users, Layers, AlertTriangle, Plus, AlertCircle, UserCog, RefreshCw, X as IconX } from 'lucide-react';
+import { TicketStatus, TicketStatusLabels } from '../types';
 import KanbanColumn from '../components/tickets/KanbanColumn';
 import TicketModal from '../components/tickets/TicketModal';
 import ProjectMembersModal from '../components/projects/ProjectMembersModal';
-import CreateTicketModal from '../components/tickets/CreateTicketModal'; // <<--- IMPORTÉ ICI
+import CreateTicketModal from '../components/tickets/CreateTicketModal';
 import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
 import {
@@ -27,20 +16,17 @@ import {
   getProjectMembers,
   getCurrentUserProfile,
   updateTicket,
-  supabase, // Pour la requête batch des assignees manquants
-  ProjectMemberWithUser // Type exporté de supabase.ts
+  createNotification, // <<--- AJOUTER createNotification
+  supabase,
+  ProjectMemberWithUser
 } from '../lib/supabase';
 import { Database } from '../types/supabase';
 import { useAuth } from '../contexts/AuthContext';
 
-// Types spécifiques à cette page
-type ProjectType = Database['public']['Tables']['projects']['Row'];
-type UserType = Database['public']['Tables']['users']['Row'];
-type TicketType = Database['public']['Tables']['tickets']['Row'];
+// ... (Types ProjectType, UserType, TicketType - inchangés) ...
 
 const ProjectDetailPage: React.FC = () => {
-  // --- SECTION 1: APPEL DE TOUS LES HOOKS ---
-
+  // ... (Tous les états useState, useMemo, fetchData, useEffect - globalement inchangés, SAUF handleTicketUpdate) ...
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
@@ -56,171 +42,88 @@ const ProjectDetailPage: React.FC = () => {
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // États pour CreateTicketModal
   const [showCreateTicketModal, setShowCreateTicketModal] = useState(false);
   const [initialTicketStatus, setInitialTicketStatus] = useState<TicketStatus | undefined>(undefined);
 
-  // Hooks mémoïsés
-  const filteredTickets = useMemo(() => {
-    const currentUserId = currentUserProfile?.id || authUser?.id;
-    return tickets.filter(ticket => {
-      if (filterMine && currentUserId && ticket.assignee_id !== currentUserId) return false;
-      if (filterUrgent && ticket.priority === 'high' && ticket.status !== 'done') return false; // Modifié ici pour ne pas filtrer les 'done'
-      return true;
-    });
-  }, [tickets, filterMine, filterUrgent, currentUserProfile, authUser]);
-
-  const ticketsByStatus = useMemo(() => {
-    return Object.values(TicketStatus).reduce((acc, status) => {
-      acc[status] = filteredTickets.filter(ticket => ticket.status === status.toLowerCase());
-      return acc;
-    }, {} as Record<TicketStatus, TicketType[]>);
-  }, [filteredTickets]);
-
-  const isOwner = useMemo(() => {
-    if (!project || (!authUser && !currentUserProfile)) return false;
-    const currentActualUserId = currentUserProfile?.id || authUser?.id;
-    return !!project.owner_id && !!currentActualUserId && project.owner_id === currentActualUserId;
-  }, [project, currentUserProfile, authUser]);
-
-  const completion = useMemo(() => {
-    if (!filteredTickets.length) return 0;
-    const completed = filteredTickets.filter(t => t.status === 'done').length;
-    return Math.round((completed / filteredTickets.length) * 100);
-  }, [filteredTickets]);
-
-  const urgentCount = useMemo(() => {
-      return filteredTickets.filter(t => t.priority === 'high' && t.status !== 'done').length;
-  }, [filteredTickets]);
-
-  // Hook de rappel pour le fetch des données
-  const fetchData = useCallback(async () => {
-    if (!projectId || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(projectId)) {
-      setError("ID de projet invalide ou manquant.");
-      setLoading(false);
-      setProject(null);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    setProjectMembers([]);
-    try {
-      const [profileResult, projectResult, ticketsResult, membersResult] = await Promise.allSettled([
-        getCurrentUserProfile(),
-        getProjectById(projectId),
-        getTicketsByProject(projectId),
-        getProjectMembers(projectId)
-      ]);
-
-      let resolvedCurrentUserProfile: UserType | null = null;
-      if (profileResult.status === 'fulfilled') {
-        resolvedCurrentUserProfile = profileResult.value;
-      } else {
-        console.error("Fetch Profile Error (settled):", profileResult.reason);
-        if (authUser) resolvedCurrentUserProfile = { id: authUser.id, email: authUser.email || '', name: 'Utilisateur', avatar: '', role: 'collaborator', created_at: new Date().toISOString() } as UserType;
-      }
-      setCurrentUserProfileState(resolvedCurrentUserProfile);
-
-      if (projectResult.status === 'rejected' || !projectResult.value) {
-        throw new Error(projectResult.status === 'rejected' ? (projectResult.reason as Error).message : "Projet non trouvé ou accès refusé.");
-      }
-      setProject(projectResult.value);
-
-      if (ticketsResult.status === 'rejected') throw ticketsResult.reason;
-      const currentTickets = ticketsResult.value || [];
-      setTickets(currentTickets);
-
-      if (membersResult.status === 'rejected') throw membersResult.reason;
-      const fetchedMembers = membersResult.value || [];
-      setProjectMembers(fetchedMembers);
-
-      const newUserMap: Record<string, UserType> = {};
-      if (resolvedCurrentUserProfile) newUserMap[resolvedCurrentUserProfile.id] = resolvedCurrentUserProfile;
-      fetchedMembers.forEach(member => {
-          if (member.users) newUserMap[member.users.id] = member.users;
-      });
-      const missingAssigneeIds = Array.from(new Set(
-           currentTickets.map(t => t.assignee_id).filter((id): id is string => !!id && !newUserMap[id])
-      ));
-      if (missingAssigneeIds.length > 0) {
-          try {
-              const { data: missingUsers, error: missingUsersError } = await supabase
-                  .from('users')
-                  .select('*')
-                  .in('id', missingAssigneeIds);
-              if (missingUsersError) throw missingUsersError;
-              (missingUsers || []).forEach(u => newUserMap[u.id] = u);
-          } catch(assigneeError) {
-              console.error("Error fetching missing ticket assignees:", assigneeError);
-          }
-      }
-      setUserMap(newUserMap);
-    } catch (err) {
-      console.error('Error fetching project data:', err);
-      setError(`Erreur: ${err instanceof Error ? err.message : 'Impossible de charger les données du projet.'}`);
-      setProject(null);
-      setTickets([]);
-      setProjectMembers([]);
-      setUserMap({});
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, authUser]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-
-  // --- SECTION 2: LOGIQUE NON-HOOK (Handlers, Formatters) ---
-  const formatDeadline = (dateString: string | null): string => {
-     if (!dateString) return 'Pas de deadline';
-     try {
-        const date = new Date(dateString);
-        return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }).format(date);
-     } catch (e) { return "Date invalide"; }
-  };
-
+  const filteredTickets = useMemo(() => { /* ... */ }, [tickets, filterMine, filterUrgent, currentUserProfile, authUser]);
+  const ticketsByStatus = useMemo(() => { /* ... */ }, [filteredTickets]);
+  const isOwner = useMemo(() => { /* ... */ }, [project, currentUserProfile, authUser]);
+  const completion = useMemo(() => { /* ... */ }, [filteredTickets]);
+  const urgentCount = useMemo(() => { /* ... */ }, [filteredTickets]);
+  const fetchData = useCallback(async () => { /* ... (comme avant) ... */ }, [projectId, authUser]);
+  useEffect(() => { fetchData(); }, [fetchData]);
+  const formatDeadline = (dateString: string | null): string => { /* ... */ };
   const handleTicketClick = (ticket: TicketType) => setSelectedTicket(ticket);
 
-  const handleTicketUpdate = async (ticketId: string, updates: Partial<TicketType>) => {
+
+  const handleTicketUpdate = async (ticketId: string, updates: Partial<TicketType>): Promise<TicketType | null> => {
     const originalTickets = [...tickets];
+    const ticketAvantUpdate = tickets.find(t => t.id === ticketId);
     const originalSelectedTicket = selectedTicket ? {...selectedTicket} : null;
-    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...updates } : t));
+
+    // Mise à jour optimiste
+    setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, ...updates } as TicketType : t));
     if (selectedTicket?.id === ticketId) {
-        setSelectedTicket(prev => prev ? { ...prev, ...updates } : null);
+        setSelectedTicket(prev => prev ? { ...prev, ...updates } as TicketType : null);
     }
     setError(null);
+
     try {
-        await updateTicket(ticketId, updates);
+        const ticketApresUpdate = await updateTicket(ticketId, updates); // updateTicket retourne le ticket mis à jour
+        if (!ticketApresUpdate) throw new Error("La mise à jour du ticket a échoué ou n'a retourné aucune donnée.");
+
+        // --- NOTIFICATION : CHANGEMENT D'ASSIGNÉ (si c'est le cas) ---
+        if (ticketAvantUpdate && ticketApresUpdate.assignee_id &&
+            ticketApresUpdate.assignee_id !== ticketAvantUpdate.assignee_id && // L'assigné a changé
+            ticketApresUpdate.assignee_id !== authUser?.id) { // Et ce n'est pas une auto-assignation par l'assigné lui-même
+
+            const assignerName = currentUserProfile?.name || authUser?.user_metadata?.name || "Quelqu'un";
+            const projectNameForNotif = project?.name || "un projet";
+
+            try {
+                await createNotification({
+                    user_id: ticketApresUpdate.assignee_id, // Nouvel assigné
+                    content: `${assignerName} vous a assigné la tâche "${ticketApresUpdate.title}" dans le projet "${projectNameForNotif}".`,
+                    type: 'ticket_assigned',
+                    related_entity: 'ticket',
+                    related_id: ticketApresUpdate.id,
+                });
+            } catch (notifError) {
+                console.error("Erreur création notif (changement assigné via update):", notifError);
+            }
+        }
+        // --- FIN NOTIFICATION ---
+
+        // Mise à jour de l'état local avec le ticket retourné par updateTicket (plus fiable)
+        setTickets(prev => prev.map(t => t.id === ticketId ? ticketApresUpdate : t));
+        if (selectedTicket?.id === ticketId) {
+            setSelectedTicket(ticketApresUpdate);
+        }
+        return ticketApresUpdate;
     } catch (err) {
         console.error('Error updating ticket:', err);
         setError(`Erreur mise à jour ticket: ${err instanceof Error ? err.message : 'Erreur inconnue'}`);
         setTickets(originalTickets);
         if (originalSelectedTicket?.id === ticketId) setSelectedTicket(originalSelectedTicket);
+        return null;
     }
   };
 
-  const handleStatusChange = (ticketId: string, newStatus: TicketStatus) => {
-    handleTicketUpdate(ticketId, { status: newStatus.toLowerCase() as TicketType['status'] });
+  const handleStatusChange = async (ticketId: string, newStatus: TicketStatus) => { // Rendre async pour await
+    await handleTicketUpdate(ticketId, { status: newStatus.toLowerCase() as TicketType['status'] });
   };
 
-  const handleAssignToMe = (ticketId: string) => {
+  const handleAssignToMe = async (ticketId: string): Promise<TicketType | null | void> => {
     const currentUserId = currentUserProfile?.id || authUser?.id;
     if (!currentUserId) {
         setError("Impossible de s'assigner : utilisateur non identifié.");
-        return;
+        return null;
     }
-    handleTicketUpdate(ticketId, { assignee_id: currentUserId });
+    // La notification sera gérée par handleTicketUpdate si l'assigné change réellement
+    return handleTicketUpdate(ticketId, { assignee_id: currentUserId });
   };
 
-  const handleAddTicket = (status?: TicketStatus) => { // Status est optionnel
-    setInitialTicketStatus(status || TicketStatus.BACKLOG); // Défaut à Backlog si non fourni
-    setShowCreateTicketModal(true);
-    setError(null);
-  };
-
+  const handleAddTicket = (status?: TicketStatus) => { /* ... (comme avant) ... */ };
 
   // --- SECTION 3: RETOURS CONDITIONNELS (loading, error) ---
   if (loading) {
@@ -320,7 +223,8 @@ const ProjectDetailPage: React.FC = () => {
          </div>
       </div>
 
-      {/* Kanban Board Actions */}
+
+       {/* Kanban Board Actions */}
       <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-orbitron text-star-white">Tableau Kanban</h2>
@@ -365,17 +269,18 @@ const ProjectDetailPage: React.FC = () => {
       )}
 
       {/* Member Management Modal */}
-       {showMembersModal && project && projectId && (currentUserProfile || authUser) && (
-         <ProjectMembersModal
-           isOpen={showMembersModal}
-           onClose={() => setShowMembersModal(false)}
-           projectId={projectId}
-           ownerId={project.owner_id}
-           currentUserId={currentUserProfile?.id || authUser?.id || ''}
-           initialMembers={projectMembers}
-           onMembersUpdate={fetchData}
-         />
-       )}
+{showMembersModal && project && projectId && (currentUserProfile || authUser) && (
+  <ProjectMembersModal
+    isOpen={showMembersModal}
+    onClose={() => setShowMembersModal(false)}
+    projectId={projectId}
+    ownerId={project.owner_id}
+    currentUserId={currentUserProfile?.id || authUser?.id || ''}
+    initialMembers={projectMembers}
+    onMembersUpdate={fetchData}
+    projectName={project.name} // <<--- C'EST CETTE LIGNE !
+  />
+)}
 
       {/* Create Ticket Modal */}
       {showCreateTicketModal && project && projectId && (
