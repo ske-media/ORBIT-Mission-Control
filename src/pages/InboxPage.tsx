@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { Plus, Send, MessageSquare, Trash2, X as IconX, AlertCircle, RefreshCw, Edit3, Briefcase } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
-import CreateTicketModal from '../components/tickets/CreateTicketModal';
+import TicketFormModal from '../components/tickets/TicketFormModal';
 import {
   getCurrentUserProfile,
   getInboxItems,
