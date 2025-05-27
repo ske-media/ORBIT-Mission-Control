@@ -23,7 +23,10 @@ type InboxItem = Database['public']['Tables']['inbox_items']['Row'];
 type Notification = Database['public']['Tables']['notifications']['Row'];
 type NotificationSettings = Database['public']['Tables']['notification_settings']['Row'];
 type ProjectMember = Database['public']['Tables']['project_members']['Row'];
-export type ProjectMemberWithUser = ProjectMember & { users: UserProfile | null }; // Exporté pour usage externe
+
+export type ProjectMemberWithUser = ProjectMember & {
+  user: UserProfile;
+};
 
 // ==================================
 // Auth Helpers
@@ -137,19 +140,20 @@ export const updateProject = async (id: string, projectUpdates: Partial<Project>
 // Project Members Table Helpers -- NOUVEAU / MODIFIÉ
 // ==================================
 export const getProjectMembers = async (projectId: string): Promise<ProjectMemberWithUser[]> => {
+  console.log('Début getProjectMembers pour le projet:', projectId);
   const { data, error } = await supabase
     .from('project_members')
     .select(`
-      role,
-      created_at,
-      users (*)
+      *,
+      user:users(*)
     `)
     .eq('project_id', projectId);
   if (error) {
     console.error(`Error fetching project members for project (${projectId}):`, error);
     throw error;
   }
-  return (data as ProjectMemberWithUser[]) || []; // Cast explicite
+  console.log('Membres récupérés avec succès:', data);
+  return data || [];
 };
 
 export const addProjectMember = async (projectId: string, userId: string, role: 'editor' | 'viewer'): Promise<ProjectMember | null> => {
@@ -165,28 +169,65 @@ export const addProjectMember = async (projectId: string, userId: string, role: 
   return data;
 };
 
+export async function updateProjectMemberRole(
+  projectId: string,
+  userId: string,
+  newRole: 'owner' | 'editor' | 'viewer'
+): Promise<{ success: boolean; error?: string }> {
+  console.log('Début updateProjectMemberRole:', { projectId, userId, newRole });
+  
+  try {
+    // Vérifier si l'utilisateur actuel est le propriétaire du projet
+    const { data: projectData, error: projectError } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
 
-export const updateProjectMemberRole = async (projectId: string, userId: string, newRole: 'editor' | 'viewer'): Promise<ProjectMember | null> => {
-  if (newRole === 'owner') throw new Error("Cannot assign 'owner' role via this function.");
+    if (projectError) {
+      console.error('Erreur lors de la vérification du propriétaire:', projectError);
+      return { success: false, error: 'Erreur lors de la vérification des permissions' };
+    }
 
-  const { data, error } = await supabase
-    .from('project_members')
-    .update({ role: newRole })
-    .eq('project_id', projectId)
-    .eq('user_id', userId)
-    .neq('role', 'owner')
-    .select()
-    .single();
-  if (error) {
-    console.error(`Error updating role for member (${userId}) in project (${projectId}):`, error);
-    throw error;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || user.id !== projectData.owner_id) {
+      console.error('L\'utilisateur n\'est pas le propriétaire du projet');
+      return { success: false, error: 'Seul le propriétaire peut modifier les rôles' };
+    }
+
+    // Vérifier si le membre existe
+    const { data: memberData, error: memberError } = await supabase
+      .from('project_members')
+      .select('role')
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (memberError) {
+      console.error('Erreur lors de la vérification du membre:', memberError);
+      return { success: false, error: 'Membre non trouvé' };
+    }
+
+    // Mettre à jour le rôle
+    const { data, error } = await supabase
+      .from('project_members')
+      .update({ role: newRole })
+      .eq('project_id', projectId)
+      .eq('user_id', userId)
+      .select();
+
+    if (error) {
+      console.error('Erreur lors de la mise à jour du rôle:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('Rôle mis à jour avec succès:', data);
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur inattendue:', error);
+    return { success: false, error: 'Une erreur inattendue est survenue' };
   }
-   if (!data) {
-       console.warn(`No non-owner member found to update role for user ${userId} in project ${projectId}`);
-       // Ou throw: throw new Error("Member not found or is owner.");
-   }
-  return data;
-};
+}
 
 export const removeProjectMember = async (projectId: string, userId: string): Promise<boolean> => {
   const { data: projectData, error: projectError } = await supabase
@@ -223,7 +264,7 @@ export const getUsersToInvite = async (projectId: string, searchTerm: string = "
 
   let query = supabase
     .from('users')
-    .select('id, name, email, avatar')
+    .select('*')
     .not('id', 'in', memberIdsFilter);
 
   if (searchTerm.trim()) {

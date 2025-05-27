@@ -48,8 +48,8 @@ export interface Database {
           id: string
           name: string
           description: string
-          deadline: string | null
-          client_name: string | null
+          owner_id: string
+          is_public: boolean
           created_at: string
           updated_at: string
         }
@@ -57,8 +57,8 @@ export interface Database {
           id?: string
           name: string
           description: string
-          deadline?: string | null
-          client_name?: string | null
+          owner_id: string
+          is_public?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -66,67 +66,108 @@ export interface Database {
           id?: string
           name?: string
           description?: string
-          deadline?: string | null
-          client_name?: string | null
+          owner_id?: string
+          is_public?: boolean
           created_at?: string
           updated_at?: string
-        }
-        Relationships: []
-      }
-      tickets: {
-        Row: {
-          id: string
-          title: string
-          description: string
-          priority: 'low' | 'medium' | 'high'
-          status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'
-          project_id: string
-          assignee_id: string | null
-          deadline: string | null
-          created_at: string
-          updated_at: string
-          is_recurring: boolean | null
-          recurring_frequency: 'daily' | 'weekly' | 'monthly' | null
-        }
-        Insert: {
-          id?: string
-          title: string
-          description: string
-          priority: 'low' | 'medium' | 'high'
-          status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'
-          project_id: string
-          assignee_id?: string | null
-          deadline?: string | null
-          created_at?: string
-          updated_at?: string
-          is_recurring?: boolean | null
-          recurring_frequency?: 'daily' | 'weekly' | 'monthly' | null
-        }
-        Update: {
-          id?: string
-          title?: string
-          description?: string
-          priority?: 'low' | 'medium' | 'high'
-          status?: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'
-          project_id?: string
-          assignee_id?: string | null
-          deadline?: string | null
-          created_at?: string
-          updated_at?: string
-          is_recurring?: boolean | null
-          recurring_frequency?: 'daily' | 'weekly' | 'monthly' | null
         }
         Relationships: [
           {
-            foreignKeyName: "tickets_project_id_fkey"
+            foreignKeyName: "projects_owner_id_fkey"
+            columns: ["owner_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      project_members: {
+        Row: {
+          project_id: string
+          user_id: string
+          role: 'owner' | 'editor'
+          created_at: string
+        }
+        Insert: {
+          project_id: string
+          user_id: string
+          role: 'owner' | 'editor'
+          created_at?: string
+        }
+        Update: {
+          project_id?: string
+          user_id?: string
+          role?: 'owner' | 'editor'
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
             columns: ["project_id"]
             referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "project_members_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      tickets: {
+        Row: {
+          id: string
+          project_id: string
+          assignee_id: string | null
+          title: string
+          description: string
+          priority: 'low' | 'medium' | 'high'
+          status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'
+          deadline: string | null
+          is_recurring: boolean
+          recurring_frequency: 'daily' | 'weekly' | 'monthly' | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          assignee_id?: string | null
+          title: string
+          description: string
+          priority: 'low' | 'medium' | 'high'
+          status: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'
+          deadline?: string | null
+          is_recurring?: boolean
+          recurring_frequency?: 'daily' | 'weekly' | 'monthly' | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          assignee_id?: string | null
+          title?: string
+          description?: string
+          priority?: 'low' | 'medium' | 'high'
+          status?: 'backlog' | 'todo' | 'in_progress' | 'review' | 'done'
+          deadline?: string | null
+          is_recurring?: boolean
+          recurring_frequency?: 'daily' | 'weekly' | 'monthly' | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
             foreignKeyName: "tickets_assignee_id_fkey"
             columns: ["assignee_id"]
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tickets_project_id_fkey"
+            columns: ["project_id"]
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           }
         ]

@@ -37,7 +37,7 @@ COMMENT ON TABLE public.projects IS 'Détails des projets gérés par l''agence,
 CREATE TABLE IF NOT EXISTS public.project_members (
     project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL CHECK (role IN ('owner', 'editor', 'viewer')),
+    role TEXT NOT NULL CHECK (role IN ('owner', 'editor')),
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     PRIMARY KEY (project_id, user_id) -- Clé primaire composite
 );

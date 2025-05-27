@@ -22,7 +22,17 @@ import { useAuth } from '../../contexts/AuthContext';
 type TicketType = Database['public']['Tables']['tickets']['Row'];
 type UserType = Database['public']['Tables']['users']['Row'];
 type ProjectTypeForSelect = Pick<Database['public']['Tables']['projects']['Row'], 'id' | 'name'>;
-type NewTicketData = Omit<Database['public']['Tables']['tickets']['Insert'], 'id' | 'created_at' | 'updated_at'>;
+type NewTicketData = {
+  project_id: string;
+  title: string;
+  description: string;
+  priority: TicketPriority;
+  status: TicketStatus;
+  assignee_id: string | null;
+  deadline: string | null;
+  is_recurring: boolean;
+  recurring_frequency: 'daily' | 'weekly' | 'monthly' | null;
+};
 
 interface CreateTicketModalProps {
   isOpen: boolean;
@@ -128,23 +138,20 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   // Effet #2: CHARGEMENT DES MEMBRES du projet.
   // Se déclenche quand `isOpen` est vrai ET `selectedProjectId` (l'état interne) change.
   useEffect(() => {
-    // Si la modale n'est pas ouverte, ou si aucun projet n'est sélectionné, ne rien faire ou nettoyer.
     if (!isOpen || !selectedProjectId) {
-      // console.log('[CreateTicketModal] useEffect #2 - Not open or no project selected, clearing members.');
       setProjectMembers([]);
       setIsLoadingMembers(false);
-      return; // Sortir tôt
+      return;
     }
 
-    // Si on arrive ici, la modale est ouverte ET un projet est sélectionné.
     const loadMembers = async (projectIdToLoad: string) => {
       console.log(`[CreateTicketModal] useEffect #2 - Loading members for project ID: ${projectIdToLoad}`);
       setIsLoadingMembers(true);
-      setFormError(null);      // Réinitialiser l'erreur spécifique au chargement des membres
-      setProjectMembers([]);   // Vider les membres précédents avant de charger
+      setFormError(null);
+      setProjectMembers([]);
       try {
         const members = await getProjectMembers(projectIdToLoad);
-        setProjectMembers(members.map(pm => pm.users).filter((user): user is UserType => user !== null));
+        setProjectMembers(members.map(pm => pm.user).filter(Boolean));
       } catch (err) {
         console.error("Error fetching project members for modal:", err);
         setFormError("Impossible de charger les membres pour l'assignation.");
@@ -154,8 +161,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     };
 
     loadMembers(selectedProjectId);
-
-  }, [isOpen, selectedProjectId]); // Dépendances critiques et stables
+  }, [isOpen, selectedProjectId]);
 
 
   const handleProjectSelectionChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -198,8 +204,10 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       description: description.trim(),
       priority: priority.toLowerCase() as TicketPriority,
       status: status.toLowerCase() as TicketStatus,
-      assignee_id: actualAssigneeId,
+      assignee_id: actualAssigneeId || null,
       deadline: deadline || null,
+      is_recurring: false,
+      recurring_frequency: null,
     };
 
     try {
@@ -213,7 +221,9 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           await createNotification({
             user_id: newTicket.assignee_id,
             content: `${assignerName} vous a assigné la tâche "${newTicket.title}" dans le projet "${projectNameForNotif}".`,
-            type: 'ticket_assigned', related_entity: 'ticket', related_id: newTicket.id,
+            type: 'ticket_assigned',
+            related_entity: 'ticket',
+            related_id: newTicket.id,
           });
         } catch (notifError) {
           console.error("Erreur création notification (assignation ticket):", notifError);
