@@ -28,10 +28,11 @@ CREATE TABLE IF NOT EXISTS public.projects (
     deadline TIMESTAMPTZ,
     client_name TEXT,
     is_public BOOLEAN NOT NULL DEFAULT FALSE, -- Ajouté depuis 20250422_add_is_public_to_projects.sql
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE, -- Nouvelle colonne pour l'archivage
     created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
-COMMENT ON TABLE public.projects IS 'Détails des projets gérés par l''agence, avec visibilité publique/privée.';
+COMMENT ON TABLE public.projects IS 'Détails des projets gérés par l''agence, avec visibilité publique/privée et statut d''archivage.';
 
 -- Table des Membres de Projet (Table de liaison)
 CREATE TABLE IF NOT EXISTS public.project_members (
@@ -101,6 +102,7 @@ COMMENT ON TABLE public.notification_settings IS 'Préférences de notification 
 
 CREATE INDEX IF NOT EXISTS idx_projects_owner_id ON public.projects(owner_id);
 CREATE INDEX IF NOT EXISTS idx_projects_is_public ON public.projects(is_public); -- Index pour la nouvelle colonne
+CREATE INDEX IF NOT EXISTS idx_projects_is_archived ON public.projects(is_archived);
 CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON public.project_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_project_members_project_id ON public.project_members(project_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_project_id ON public.tickets(project_id);
@@ -184,18 +186,17 @@ CREATE POLICY "Manage project members"
      -- Il faudra les gérer côté application si nécessaire.
   );
 
--- Policies pour `projects` (inclut is_public)
+-- Policies pour `projects` (inclut is_public et is_archived)
 DROP POLICY IF EXISTS "View projects" ON public.projects;
 CREATE POLICY "View projects"
   ON public.projects
   FOR SELECT
   TO authenticated
   USING (
-    projects.is_public
-    OR projects.owner_id = auth.uid()
-    OR public.is_project_member(projects.id, auth.uid())
+    (projects.is_public OR projects.owner_id = auth.uid() OR public.is_project_member(projects.id, auth.uid()))
+    AND (NOT projects.is_archived OR projects.owner_id = auth.uid() OR public.is_project_member(projects.id, auth.uid()))
   );
-COMMENT ON POLICY "View projects" ON public.projects IS 'Permet aux utilisateurs authentifiés de voir les projets publics, ceux dont ils sont propriétaires, ou ceux dont ils sont membres.';
+COMMENT ON POLICY "View projects" IS 'Permet aux utilisateurs authentifiés de voir les projets publics non archivés, ceux dont ils sont propriétaires, ou ceux dont ils sont membres.';
 
 DROP POLICY IF EXISTS "Users can create projects" ON public.projects;
 CREATE POLICY "Users can create projects" ON public.projects FOR INSERT TO authenticated WITH CHECK (auth.uid() = owner_id);

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, X, AlertCircle } from 'lucide-react';
+import { Plus, Search, X, AlertCircle, ArchiveRestore } from 'lucide-react';
 import ProjectCard from '../components/projects/ProjectCard';
 import Button from '../components/ui/Button';
-import { getProjects, createProject } from '../lib/supabase'; // Supabase helpers, createProject throws now
+import { getProjects, createProject, archiveProject } from '../lib/supabase'; // Supabase helpers, createProject throws now
 import { useAuth } from '../contexts/AuthContext'; // Auth context
 import { Database } from '../types/supabase';
+import ArchivedProjectsModal from '../components/projects/ArchivedProjectsModal';
 
 type Project = Database['public']['Tables']['projects']['Row'];
 // Type for the new project form data (excluding fields set automatically)
@@ -29,6 +30,7 @@ const ProjectsPage: React.FC = () => {
   });
   const [creating, setCreating] = useState(false); // Loading state for project creation
   const [createError, setCreateError] = useState<string | null>(null); // Error state for project creation
+  const [showArchivedModal, setShowArchivedModal] = useState(false);
 
   const { user } = useAuth(); // Get authenticated user
 
@@ -136,6 +138,10 @@ const ProjectsPage: React.FC = () => {
     }
   };
 
+  const handleProjectArchived = useCallback(() => {
+    fetchProjects(); // Rafraîchir la liste des projets
+  }, [fetchProjects]);
+
   // --- Placeholder Handlers ---
    const handleEditProject = (project: Project) => {
        console.log("TODO: Implement Edit Project modal/logic for:", project.id);
@@ -184,14 +190,24 @@ const ProjectsPage: React.FC = () => {
           <h1 className="text-3xl font-orbitron text-star-white mb-2">Projets</h1>
           <p className="text-moon-gray">Gérez et suivez tous vos projets</p>
         </div>
-        {/* Button to open create modal */}
-        <Button
-          variant="primary"
-          iconLeft={<Plus size={16} />}
-          onClick={() => { setShowCreateModal(true); setCreateError(null); }} // Reset error on open
-        >
-          Nouveau projet
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowArchivedModal(true)}
+            className="text-moon-gray hover:text-star-white"
+          >
+            <ArchiveRestore size={18} className="mr-2" />
+            Projets Archivés
+          </Button>
+          <Button
+            variant="primary"
+            iconLeft={<Plus size={16} />}
+            onClick={() => { setShowCreateModal(true); setCreateError(null); }}
+          >
+            Nouveau projet
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -220,12 +236,10 @@ const ProjectsPage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.05 * index }}
             >
-              <ProjectCard project={project} />
-              {/* Placeholder for Edit/Delete buttons if needed */}
-              {/* <div className="mt-2 flex gap-2 justify-end">
-                   <Button size="sm" variant="outline" onClick={() => handleEditProject(project)} iconLeft={<Edit size={14}/>}/>
-                   <Button size="sm" variant="danger" onClick={() => handleDeleteProject(project.id)} iconLeft={<Trash2 size={14}/>}/>
-               </div> */}
+              <ProjectCard 
+                project={project} 
+                onProjectArchived={handleProjectArchived}
+              />
             </motion.div>
           ))}
         </div>
@@ -374,6 +388,13 @@ const ProjectsPage: React.FC = () => {
           </motion.div>
         </div>
       )}
+
+      {/* Archived Projects Modal */}
+      <ArchivedProjectsModal
+        isOpen={showArchivedModal}
+        onClose={() => setShowArchivedModal(false)}
+        onProjectUnarchived={fetchProjects}
+      />
     </div>
   );
 };

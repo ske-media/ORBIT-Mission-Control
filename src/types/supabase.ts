@@ -50,6 +50,7 @@ export interface Database {
           description: string
           owner_id: string
           is_public: boolean
+          is_archived: boolean
           created_at: string
           updated_at: string
         }
@@ -59,6 +60,7 @@ export interface Database {
           description: string
           owner_id: string
           is_public?: boolean
+          is_archived?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -68,6 +70,7 @@ export interface Database {
           description?: string
           owner_id?: string
           is_public?: boolean
+          is_archived?: boolean
           created_at?: string
           updated_at?: string
         }

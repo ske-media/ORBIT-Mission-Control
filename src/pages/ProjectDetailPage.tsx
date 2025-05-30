@@ -43,6 +43,7 @@ import {
 } from '../lib/supabase';
 import { Database } from '../types/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import ProjectDetails from '../components/projects/ProjectDetails';
 
 type ProjectType = Database['public']['Tables']['projects']['Row'];
 type UserProfile = Database['public']['Tables']['users']['Row'];
@@ -449,15 +450,13 @@ const ProjectDetailPage: React.FC = () => {
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 md:mb-8 flex-shrink-0">
-        <div className="max-w-xl">
-          <h1 className="text-2xl md:text-3xl font-orbitron text-star-white mb-1 truncate" title={project.name}>{project.name}</h1>
-          <p className="text-moon-gray text-sm line-clamp-2">{project.description}</p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => fetchData(true)} iconLeft={loadingPage ? <Loader2 className="animate-spin" size={16}/> : <RefreshCw size={16}/>} disabled={loadingPage} className="mt-2 sm:mt-0 self-start sm:self-center">
-          {loadingPage ? 'Actualisation...' : 'Rafraîchir'}
-        </Button>
-      </div>
+      <ProjectDetails 
+        project={project} 
+        onProjectArchived={() => {
+          fetchData(true);
+          navigate('/projects');
+        }} 
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6 md:mb-8 flex-shrink-0">
         <StatCard icon={<Calendar size={18} />} title="Deadline" value={formatDeadline(project.deadline)} />

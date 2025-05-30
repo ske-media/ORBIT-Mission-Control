@@ -28,6 +28,8 @@ export type ProjectMemberWithUser = ProjectMember & {
   user: UserProfile;
 };
 
+type ProjectType = Database['public']['Tables']['projects']['Row'];
+
 // ==================================
 // Auth Helpers
 // ==================================
@@ -517,4 +519,50 @@ export const updateNotificationSettings = async (settingsUpdates: Partial<Notifi
     throw error;
   }
   return data;
+};
+
+export const archiveProject = async (projectId: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { error } = await supabase
+      .from('projects')
+      .update({ is_archived: true, updated_at: new Date().toISOString() })
+      .eq('id', projectId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur lors de l\'archivage du projet:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erreur lors de l\'archivage du projet' };
+  }
+};
+
+export const unarchiveProject = async (projectId: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { error } = await supabase
+      .from('projects')
+      .update({ is_archived: false, updated_at: new Date().toISOString() })
+      .eq('id', projectId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur lors de la désarchivation du projet:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erreur lors de la désarchivation du projet' };
+  }
+};
+
+export const getArchivedProjects = async (): Promise<ProjectType[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('is_archived', true)
+      .order('updated_at', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Erreur lors de la récupération des projets archivés:', error);
+    throw error;
+  }
 };

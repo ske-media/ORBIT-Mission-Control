@@ -1,21 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, Clock } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
+import { AlertCircle, Clock, Archive } from 'lucide-react';
+import { supabase, archiveProject } from '../../lib/supabase';
 import { Database } from '../../types/supabase';
+import { toast } from 'react-hot-toast';
+import Button from '../ui/Button';
 
 type Project = Database['public']['Tables']['projects']['Row'];
 type Ticket = Database['public']['Tables']['tickets']['Row'];
 
 type ProjectCardProps = {
   project: Project;
+  onProjectArchived?: () => void;
 };
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
+const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectArchived }) => {
   const [completion, setCompletion] = useState(0);
   const [urgentCount, setUrgentCount] = useState(0);
   const [totalTickets, setTotalTickets] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [isArchiving, setIsArchiving] = useState(false);
   
   useEffect(() => {
     const fetchProjectData = async () => {
@@ -83,6 +87,28 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
     return deadline < now;
   };
 
+  const handleArchive = async (e: React.MouseEvent) => {
+    e.preventDefault(); // Empêche la navigation vers le projet
+    if (!project || isArchiving) return;
+    if (!window.confirm(`Êtes-vous sûr de vouloir archiver le projet "${project.name}" ?`)) return;
+
+    setIsArchiving(true);
+    try {
+      const result = await archiveProject(project.id);
+      if (result.success) {
+        toast.success('Projet archivé avec succès');
+        onProjectArchived?.();
+      } else {
+        toast.error(result.error || 'Erreur lors de l\'archivage du projet');
+      }
+    } catch (error) {
+      console.error('Erreur lors de l\'archivage:', error);
+      toast.error('Erreur lors de l\'archivage du projet');
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
   return (
     <Link 
       to={`/projects/${project.id}`}
@@ -94,12 +120,25 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
             <h3 className="text-lg font-orbitron text-star-white">{project.name}</h3>
             <p className="text-sm text-moon-gray">{project.client_name || 'Projet interne'}</p>
           </div>
-          {urgentCount > 0 && (
-            <div className="flex items-center gap-1 text-red-alert">
-              <AlertCircle size={16} />
-              <span className="text-sm">{urgentCount}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {urgentCount > 0 && (
+              <div className="flex items-center gap-1 text-red-alert">
+                <AlertCircle size={16} />
+                <span className="text-sm">{urgentCount}</span>
+              </div>
+            )}
+            {!project.is_archived && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleArchive}
+                disabled={isArchiving}
+                className="text-red-alert/70 hover:text-red-alert hover:bg-red-alert/10"
+              >
+                <Archive size={16} />
+              </Button>
+            )}
+          </div>
         </div>
         
         <p className="text-sm text-moon-gray mb-6 line-clamp-2">{project.description}</p>
