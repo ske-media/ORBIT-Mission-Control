@@ -286,6 +286,37 @@ export interface Database {
           }
         ]
       }
+      ticket_assignees: {
+        Row: {
+          ticket_id: string;
+          user_id: string;
+          created_at: string;
+        };
+        Insert: {
+          ticket_id: string;
+          user_id: string;
+          created_at?: string;
+        };
+        Update: {
+          ticket_id?: string;
+          user_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "ticket_assignees_ticket_id_fkey";
+            columns: ["ticket_id"];
+            referencedRelation: "tickets";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "ticket_assignees_user_id_fkey";
+            columns: ["user_id"];
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
     }
     Views: {
       [_ in never]: never

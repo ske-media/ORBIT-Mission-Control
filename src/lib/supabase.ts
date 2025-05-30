@@ -566,3 +566,42 @@ export const getArchivedProjects = async (): Promise<ProjectType[]> => {
     throw error;
   }
 };
+
+export const addTicketAssignee = async (ticketId: string, userId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('ticket_assignees')
+    .insert([{ ticket_id: ticketId, user_id: userId }]);
+  
+  if (error) {
+    console.error(`Error adding ticket assignee (user: ${userId}, ticket: ${ticketId}):`, error);
+    throw error;
+  }
+};
+
+export const removeTicketAssignee = async (ticketId: string, userId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('ticket_assignees')
+    .delete()
+    .match({ ticket_id: ticketId, user_id: userId });
+  
+  if (error) {
+    console.error(`Error removing ticket assignee (user: ${userId}, ticket: ${ticketId}):`, error);
+    throw error;
+  }
+};
+
+export const getTicketAssignees = async (ticketId: string): Promise<UserProfile[]> => {
+  const { data, error } = await supabase
+    .from('ticket_assignees')
+    .select(`
+      user:users(*)
+    `)
+    .eq('ticket_id', ticketId);
+
+  if (error) {
+    console.error(`Error getting ticket assignees (ticket: ${ticketId}):`, error);
+    throw error;
+  }
+
+  return data.map(item => item.user);
+};

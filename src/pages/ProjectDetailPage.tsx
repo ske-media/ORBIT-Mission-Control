@@ -229,17 +229,18 @@ const ProjectDetailPage: React.FC = () => {
 
   const ticketsByStatus = useMemo(() => {
     const grouped: Record<TicketStatus, TicketType[]> = {
-      [TicketStatus.BACKLOG]: [], [TicketStatus.TODO]: [], [TicketStatus.IN_PROGRESS]: [],
-      [TicketStatus.REVIEW]: [], [TicketStatus.DONE]: [],
+      [TicketStatus.TODO]: [], 
+      [TicketStatus.IN_PROGRESS]: [],
+      [TicketStatus.REVIEW]: [], 
+      [TicketStatus.DONE]: []
     };
-    // Sécurisation : filteredTickets est maintenant garanti d'être un tableau
     filteredTickets.forEach(ticket => {
       const statusKey = ticket.status.toLowerCase() as TicketStatus;
       if (grouped[statusKey]) {
-          grouped[statusKey].push(ticket);
+        grouped[statusKey].push(ticket);
       } else {
-          console.warn(`Ticket ${ticket.id} has unknown status: ${ticket.status}, falling back to backlog.`);
-          grouped[TicketStatus.BACKLOG].push(ticket);
+        // Si le statut n'existe pas, on met dans TODO par défaut
+        grouped[TicketStatus.TODO].push(ticket);
       }
     });
     return grouped;
@@ -312,12 +313,12 @@ const ProjectDetailPage: React.FC = () => {
     await handleTicketUpdate(ticketId, { status: newStatus.toLowerCase() as TicketType['status'] });
   }, [handleTicketUpdate]);
 
-  const handleAssignToMe = useCallback(async (ticketId: string): Promise<TicketType | null | void> => {
-    const currentAuthUserId = currentUserProfile?.id || authUser?.id;
-    if (!currentAuthUserId) {
+  const handleAssignToMe = useCallback(async (ticketId: string, userId?: string): Promise<TicketType | null | void> => {
+    const assigneeId = userId || currentUserProfile?.id || authUser?.id;
+    if (!assigneeId) {
       setOperationError("Utilisateur non identifié."); return null;
     }
-    return handleTicketUpdate(ticketId, { assignee_id: currentAuthUserId });
+    return handleTicketUpdate(ticketId, { assignee_id: assigneeId });
   }, [currentUserProfile, authUser, handleTicketUpdate]);
 
   const handleOpenTicketFormModal = useCallback((status?: TicketStatus) => {
@@ -382,6 +383,9 @@ const ProjectDetailPage: React.FC = () => {
     setTimeout(() => { setOperationSuccess(null); setOperationError(null); }, 3000);
   }, [projectId, dispatch, userMap]);
 
+  const handleTicketUpdated = (updatedTicket: TicketType) => {
+    dispatch({ type: 'UPDATE_TICKET_IN_LIST', payload: updatedTicket });
+  };
 
   // --- Render Logic ---
   if (!initialDataLoaded && loadingPage) {
@@ -492,21 +496,102 @@ const ProjectDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto pb-4 min-h-[300px]">
-        <div className="flex gap-4 md:gap-6 min-w-max h-full">
-          {Object.values(TicketStatus).map(statusKey => (
-            <KanbanColumn
-              key={statusKey}
-              status={statusKey}
-              title={TicketStatusLabels[statusKey]}
-              tickets={ticketsByStatus[statusKey] || []} // Sécurisation
-              onTicketClick={handleTicketClick}
-              onAddTicket={handleOpenTicketFormModal}
-              userMap={userMap}
-              currentUserId={currentUserProfile?.id || authUser?.id}
-              isLoadingTickets={loadingPage && !initialDataLoaded}
-            />
-          ))}
+      {/* Section Kanban */}
+      <div className="mt-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-orbitron text-star-white">Tableau Kanban</h2>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowTicketFormModal(true)}
+              className="text-moon-gray hover:text-star-white"
+            >
+              <Plus size={16} className="mr-1" />
+              Nouvelle tâche
+            </Button>
+          </div>
+        </div>
+
+        <div className="relative">
+          <div className="overflow-x-auto pb-4">
+            <div className="flex gap-4 min-w-max">
+              {Object.entries(ticketsByStatus).map(([status, tickets]) => (
+                <motion.div
+                  key={status}
+                  className="w-72 flex-shrink-0"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="bg-deep-space rounded-lg border border-white/10 p-4 h-full">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-medium text-star-white">
+                        {TicketStatusLabels[status as keyof typeof TicketStatus]}
+                      </h3>
+                      <span className="text-sm text-moon-gray bg-white/5 px-2 py-1 rounded-full">
+                        {tickets.length}
+                      </span>
+                    </div>
+                    <div className="space-y-3">
+                      {tickets.map((ticket) => (
+                        <motion.div
+                          key={ticket.id}
+                          className="bg-space-black/40 p-4 rounded-lg border border-white/5 hover:border-nebula-purple/30 transition-colors cursor-pointer"
+                          onClick={() => handleTicketClick(ticket)}
+                          whileHover={{ scale: 1.02 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <div className="flex justify-between items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-star-white font-medium truncate">{ticket.title}</h4>
+                              <p className="text-moon-gray text-sm mt-1 line-clamp-2">{ticket.description}</p>
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className={`px-2 py-1 text-xs rounded-full ${
+                                  ticket.priority === 'high' 
+                                    ? 'bg-red-alert/20 text-red-alert' 
+                                    : ticket.priority === 'medium'
+                                    ? 'bg-yellow-warning/20 text-yellow-warning'
+                                    : 'bg-green-success/20 text-green-success'
+                                }`}>
+                                  {TicketPriority[ticket.priority as keyof typeof TicketPriority]}
+                                </span>
+                                {ticket.deadline && (
+                                  <span className="text-xs text-moon-gray flex items-center gap-1">
+                                    <Calendar size={12} />
+                                    {new Date(ticket.deadline).toLocaleDateString('fr-FR', {
+                                      day: '2-digit',
+                                      month: 'short'
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {ticket.assignee_id && (
+                              <div className="flex-shrink-0">
+                                <div className="w-8 h-8 rounded-full bg-nebula-purple/20 flex items-center justify-center">
+                                  <span className="text-xs text-nebula-purple">
+                                    {ticket.assignee_id.charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </motion.div>
+                      ))}
+                      {tickets.length === 0 && (
+                        <div className="text-center py-8 text-moon-gray border border-dashed border-white/10 rounded-lg">
+                          Aucune tâche
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+          <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-deep-space to-transparent pointer-events-none"></div>
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-deep-space to-transparent pointer-events-none"></div>
         </div>
       </div>
 
@@ -516,6 +601,7 @@ const ProjectDetailPage: React.FC = () => {
           onClose={() => setSelectedTicket(null)}
           onStatusChange={handleStatusChange}
           onAssignToMe={handleAssignToMe}
+          onTicketUpdated={handleTicketUpdated}
           userMap={userMap}
           projectData={project}
         />

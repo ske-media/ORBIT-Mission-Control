@@ -12,15 +12,20 @@ import {
   Briefcase, // Pour projets actifs
   TrendingUp, // Pour activité générale
   AlertCircle as AlertCircleError, // Pour le message d'erreur
-  RefreshCw // Pour le bouton rafraîchir
+  RefreshCw, // Pour le bouton rafraîchir
+  Clock,
+  ArrowRight
 } from 'lucide-react';
 import ProjectCard from '../components/projects/ProjectCard';
 import Button from '../components/ui/Button';
 import { supabase, getProjects } from '../lib/supabase'; // getProjects pour la liste des projets
 import { Database } from '../types/supabase';
+import { TicketStatus, TicketPriority } from '../types';
+import { useNavigate } from 'react-router-dom';
 // import { useAuth } from '../contexts/AuthContext'; // Pas utilisé activement pour l'instant
 
 type Project = Database['public']['Tables']['projects']['Row'];
+type Ticket = Database['public']['Tables']['tickets']['Row'];
 // Pas besoin de Ticket ici si on compte via Supabase
 
 // Interface pour les statistiques du dashboard
@@ -48,6 +53,7 @@ const cardVariants = {
 
 const DashboardPage: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [urgentTickets, setUrgentTickets] = useState<Ticket[]>([]);
   const [stats, setStats] = useState<DashboardStats>({
     activeProjects: 0,
     urgentTasks: 0,
@@ -58,6 +64,7 @@ const DashboardPage: React.FC = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -66,13 +73,21 @@ const DashboardPage: React.FC = () => {
 
     try {
       // 1. Récupérer les projets (RLS appliquée)
-      // On a besoin des projets pour la liste ET pour calculer les deadlines proches
-      const fetchedProjects = await getProjects(); // Utilise le helper qui throw en cas d'erreur
+      const fetchedProjects = await getProjects();
       setProjects(fetchedProjects || []);
 
-      // 2. Récupérer les statistiques des tickets en parallèle
-      // Note: Ces requêtes comptent sur TOUS les tickets auxquels l'utilisateur a accès
-      // via les RLS sur la table 'tickets'.
+      // 2. Récupérer les tickets urgents
+      const { data: urgentTicketsData, error: urgentError } = await supabase
+        .from('tickets')
+        .select('*, projects(name)')
+        .eq('priority', 'high')
+        .neq('status', 'done')
+        .order('created_at', { ascending: false });
+
+      if (urgentError) throw urgentError;
+      setUrgentTickets(urgentTicketsData || []);
+
+      // 3. Récupérer les statistiques des tickets en parallèle
       const [
         urgentCountResponse,
         completedCountResponse,
@@ -123,6 +138,7 @@ const DashboardPage: React.FC = () => {
       const errorMessage = err instanceof Error ? err.message : 'Une erreur inconnue est survenue.';
       setError(`Échec du chargement des données du tableau de bord: ${errorMessage}`);
       setProjects([]);
+      setUrgentTickets([]);
       setStats({ activeProjects: 0, urgentTasks: 0, completedTasks: 0, totalTasks: 0, upcomingDeadlines: 0 });
     } finally {
       setLoading(false);
@@ -223,6 +239,77 @@ const DashboardPage: React.FC = () => {
             Un graphique d'activité (ex: radar, barres) sera affiché ici pour visualiser les tâches créées, complétées, etc. (Fonctionnalité à venir)
           </p>
         </div>
+      </motion.div>
+
+      {/* Section Tâches Urgentes */}
+      <motion.div
+        className="bg-deep-space p-6 rounded-xl border border-white/10 shadow-lg mt-8"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4, duration: 0.5 }}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-orbitron text-star-white">Tâches Urgentes</h2>
+            {urgentTickets.length > 0 && (
+              <div className="flex items-center gap-1 bg-red-alert/20 text-red-alert px-2 py-0.5 rounded-full text-xs">
+                <AlertTriangle size={12} />{urgentTickets.length}
+              </div>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => navigate('/projects')}
+            className="text-moon-gray hover:text-star-white"
+          >
+            Voir tous les projets
+            <ArrowRight size={14} className="ml-1" />
+          </Button>
+        </div>
+
+        {urgentTickets.length === 0 ? (
+          <div className="text-center py-8 text-moon-gray">
+            Aucune tâche urgente en cours
+          </div>
+        ) : (
+          <div className="grid gap-4">
+            {urgentTickets.map((ticket) => (
+              <motion.div
+                key={ticket.id}
+                className="bg-space-black/40 p-4 rounded-lg border border-white/5 hover:border-red-alert/30 transition-colors cursor-pointer"
+                onClick={() => navigate(`/projects/${ticket.project_id}`)}
+                whileHover={{ scale: 1.01 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="flex justify-between items-start gap-4">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-star-white font-medium truncate">{ticket.title}</h3>
+                    <p className="text-moon-gray text-sm mt-1 line-clamp-2">{ticket.description}</p>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-moon-gray">
+                      <span className="flex items-center gap-1">
+                        <Briefcase size={12} />
+                        {(ticket as any).projects?.name || 'Projet inconnu'}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} />
+                        {new Date(ticket.created_at).toLocaleDateString('fr-FR', {
+                          day: '2-digit',
+                          month: 'short'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <span className="px-2 py-1 text-xs bg-red-alert/20 text-red-alert rounded-full">
+                      {TicketStatus[ticket.status as keyof typeof TicketStatus]}
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
       </motion.div>
 
       {/* Liste des Projets en Cours */}

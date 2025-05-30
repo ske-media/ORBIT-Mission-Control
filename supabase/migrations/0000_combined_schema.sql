@@ -95,6 +95,15 @@ CREATE TABLE IF NOT EXISTS public.notification_settings (
 );
 COMMENT ON TABLE public.notification_settings IS 'Préférences de notification par utilisateur.';
 
+-- Table des Assignations de Tickets
+CREATE TABLE IF NOT EXISTS public.ticket_assignees (
+    ticket_id UUID NOT NULL REFERENCES public.tickets(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    PRIMARY KEY (ticket_id, user_id)
+);
+COMMENT ON TABLE public.ticket_assignees IS 'Table de liaison entre les tickets et leurs assignés';
+
 
 -- ============================================================================
 -- 2. Création des Index pour la Performance
@@ -113,6 +122,8 @@ CREATE INDEX IF NOT EXISTS idx_inbox_items_created_by ON public.inbox_items(crea
 CREATE INDEX IF NOT EXISTS idx_inbox_items_project_id ON public.inbox_items(project_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON public.notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_ticket_assignees_ticket_id ON public.ticket_assignees(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_ticket_assignees_user_id ON public.ticket_assignees(user_id);
 
 
 -- ============================================================================
@@ -126,6 +137,7 @@ ALTER TABLE public.tickets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.inbox_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notification_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ticket_assignees ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- 4. Fonctions Utilitaires
@@ -283,6 +295,44 @@ CREATE POLICY "Users can update their own notification settings" ON public.notif
 
 DROP POLICY IF EXISTS "Users can insert their own notification settings" ON public.notification_settings;
 CREATE POLICY "Users can insert their own notification settings" ON public.notification_settings FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+-- Policies pour `ticket_assignees`
+DROP POLICY IF EXISTS "View ticket assignees" ON public.ticket_assignees;
+CREATE POLICY "View ticket assignees"
+  ON public.ticket_assignees FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_members.project_id = (
+        SELECT project_id FROM public.tickets WHERE id = ticket_assignees.ticket_id
+      )
+      AND project_members.user_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Manage ticket assignees" ON public.ticket_assignees;
+CREATE POLICY "Manage ticket assignees"
+  ON public.ticket_assignees FOR ALL TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_members.project_id = (
+        SELECT project_id FROM public.tickets WHERE id = ticket_assignees.ticket_id
+      )
+      AND project_members.user_id = auth.uid()
+      AND project_members.role IN ('owner', 'editor')
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.project_members
+      WHERE project_members.project_id = (
+        SELECT project_id FROM public.tickets WHERE id = ticket_assignees.ticket_id
+      )
+      AND project_members.user_id = auth.uid()
+      AND project_members.role IN ('owner', 'editor')
+    )
+  );
 
 
 -- ============================================================================

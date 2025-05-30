@@ -69,7 +69,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<TicketPriority>(TicketPriority.MEDIUM);
-  const [status, setStatus] = useState<TicketStatus>(TicketStatus.BACKLOG);
+  const [status, setStatus] = useState<TicketStatus>(TicketStatus.TODO);
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<string | null>(null);
 
@@ -96,7 +96,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       setTitle(defaultTitleProp);
       setDescription(defaultDescriptionProp);
       setPriority(TicketPriority.MEDIUM);
-      setStatus(initialStatusProp || TicketStatus.BACKLOG);
+      setStatus(initialStatusProp || TicketStatus.TODO);
       setAssigneeId(null); // Toujours réinitialiser
       setDeadline(null);   // Toujours réinitialiser
       setFormError(null);

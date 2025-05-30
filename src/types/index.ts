@@ -5,7 +5,6 @@ export enum TicketPriority {
 }
 
 export enum TicketStatus {
-  BACKLOG = 'backlog',
   TODO = 'todo',
   IN_PROGRESS = 'in_progress',
   REVIEW = 'review',
@@ -13,7 +12,6 @@ export enum TicketStatus {
 }
 
 export const TicketStatusLabels: Record<TicketStatus, string> = {
-  [TicketStatus.BACKLOG]: 'Backlog',
   [TicketStatus.TODO]: 'À faire',
   [TicketStatus.IN_PROGRESS]: 'En cours',
   [TicketStatus.REVIEW]: 'En review',

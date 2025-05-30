@@ -319,7 +319,7 @@ const InboxPage: React.FC = () => {
           availableProjects={availableProjectsForModal}
           defaultTitle={selectedInboxItemForTicket.content.substring(0, 70)}
           defaultDescription={selectedInboxItemForTicket.content}
-          initialStatus={TicketStatus.BACKLOG}
+          initialStatus={TicketStatus.TODO}
           onTicketCreated={(newTicket: TicketType) => {
             console.log("Ticket créé depuis l'inbox:", newTicket);
             alert(`Ticket "${newTicket.title}" créé avec succès pour le projet "${projectsLinkedMap[newTicket.project_id]?.name || 'Non spécifié'}" !`);
