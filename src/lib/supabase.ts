@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { Database } from '../types/supabase';
 import { User as AuthUser } from '@supabase/supabase-js'; // Importe le type User d'authentification
 
@@ -10,7 +10,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Initialize the Supabase client
-export const supabase = createClient<Database>(
+export const supabase = createSupabaseClient<Database>(
   supabaseUrl,
   supabaseAnonKey
 );
@@ -23,6 +23,8 @@ type InboxItem = Database['public']['Tables']['inbox_items']['Row'];
 type Notification = Database['public']['Tables']['notifications']['Row'];
 type NotificationSettings = Database['public']['Tables']['notification_settings']['Row'];
 type ProjectMember = Database['public']['Tables']['project_members']['Row'];
+export type Client = Database['public']['Tables']['clients']['Row'];
+export type ClientInteraction = Database['public']['Tables']['client_interactions']['Row'];
 
 export type ProjectMemberWithUser = ProjectMember & {
   user: UserProfile;
@@ -84,7 +86,11 @@ export const getCurrentUserProfile = async (): Promise<UserProfile | null> => {
 export const getProjects = async (): Promise<Project[]> => {
   const { data, error } = await supabase
     .from('projects')
-    .select(`*, project_members(user_id, role)`) // Inclure membres est utile
+    .select(`
+      *,
+      project_members(user_id, role),
+      clients(id, name)
+    `)
     .order('created_at', { ascending: false });
   if (error) {
     console.error('Error fetching projects:', error);
@@ -96,7 +102,11 @@ export const getProjects = async (): Promise<Project[]> => {
 export const getProjectById = async (id: string): Promise<Project | null> => {
   const { data, error } = await supabase
     .from('projects')
-    .select(`*, project_members(user_id, role)`)
+    .select(`
+      *,
+      project_members(user_id, role),
+      clients(id, name)
+    `)
     .eq('id', id)
     .single();
   if (error) {
@@ -604,4 +614,165 @@ export const getTicketAssignees = async (ticketId: string): Promise<UserProfile[
   }
 
   return data.map(item => item.user);
+};
+
+// ==================================
+// Clients Table Helpers
+// ==================================
+export const createClient = async (
+  clientData: Omit<Database['public']['Tables']['clients']['Insert'], 'id' | 'created_by_user_id' | 'created_at' | 'updated_at'>
+): Promise<Client> => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('User not authenticated. Cannot create client.');
+
+  const { data, error } = await supabase
+    .from('clients')
+    .insert([{ ...clientData, created_by_user_id: user.id }])
+    .select()
+    .single();
+  if (error) {
+    console.error('Error creating client:', error);
+    throw error;
+  }
+  return data;
+};
+
+export const getClientById = async (clientId: string): Promise<Client | null> => {
+  const { data, error } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('id', clientId)
+    .single();
+  if (error) {
+    console.error(`Error fetching client by ID (${clientId}):`, error);
+    throw error;
+  }
+  return data;
+};
+
+export const updateClient = async (clientId: string, updates: Partial<Client>): Promise<Client | null> => {
+  const { data, error } = await supabase
+    .from('clients')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', clientId)
+    .select()
+    .single();
+  if (error) {
+    console.error(`Error updating client (${clientId}):`, error);
+    throw error;
+  }
+  return data;
+};
+
+export const archiveClient = async (clientId: string): Promise<Client | null> => {
+  return updateClient(clientId, { status: 'archived' });
+};
+
+export const getClients = async (filters?: {
+  status?: string;
+  assignedToUserId?: string;
+  searchQuery?: string;
+}): Promise<Client[]> => {
+  let query = supabase
+    .from('clients')
+    .select('*')
+    .order('created_at', { ascending: false });
+
+  if (filters?.status) {
+    query = query.eq('status', filters.status);
+  }
+
+  if (filters?.assignedToUserId) {
+    query = query.eq('assigned_to_user_id', filters.assignedToUserId);
+  }
+
+  if (filters?.searchQuery) {
+    query = query.or(
+      `name.ilike.%${filters.searchQuery}%,contact_person_name.ilike.%${filters.searchQuery}%,company_website.ilike.%${filters.searchQuery}%`
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error fetching clients:', error);
+    throw error;
+  }
+  return data || [];
+};
+
+export const getClient = async (id: string): Promise<Client> => {
+  const { data, error } = await supabase
+    .from('clients')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    console.error('Error fetching client:', error);
+    throw error;
+  }
+
+  return data;
+};
+
+// ==================================
+// Client Interactions Table Helpers
+// ==================================
+export const createClientInteraction = async (
+  interactionData: Omit<Database['public']['Tables']['client_interactions']['Insert'], 'id' | 'created_at'>
+): Promise<ClientInteraction> => {
+  const user = await getCurrentUser();
+  if (!user) throw new Error('User not authenticated. Cannot create interaction.');
+
+  const { data, error } = await supabase
+    .from('client_interactions')
+    .insert([{ ...interactionData, user_id: user.id }])
+    .select()
+    .single();
+  if (error) {
+    console.error('Error creating client interaction:', error);
+    throw error;
+  }
+  return data;
+};
+
+export const getClientInteractions = async (clientId: string): Promise<ClientInteraction[]> => {
+  const { data, error } = await supabase
+    .from('client_interactions')
+    .select('*')
+    .eq('client_id', clientId)
+    .order('interaction_date', { ascending: false });
+  if (error) {
+    console.error(`Error fetching interactions for client (${clientId}):`, error);
+    throw error;
+  }
+  return data || [];
+};
+
+export const updateClientInteraction = async (
+  interactionId: string,
+  updates: Partial<ClientInteraction>
+): Promise<ClientInteraction | null> => {
+  const { data, error } = await supabase
+    .from('client_interactions')
+    .update(updates)
+    .eq('id', interactionId)
+    .select()
+    .single();
+  if (error) {
+    console.error(`Error updating client interaction (${interactionId}):`, error);
+    throw error;
+  }
+  return data;
+};
+
+export const deleteClientInteraction = async (interactionId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('client_interactions')
+    .delete()
+    .eq('id', interactionId);
+  if (error) {
+    console.error(`Error deleting client interaction (${interactionId}):`, error);
+    throw error;
+  }
 };

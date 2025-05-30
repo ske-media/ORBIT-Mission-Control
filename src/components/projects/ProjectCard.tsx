@@ -6,7 +6,12 @@ import { Database } from '../../types/supabase';
 import { toast } from 'react-hot-toast';
 import Button from '../ui/Button';
 
-type Project = Database['public']['Tables']['projects']['Row'];
+type Project = Database['public']['Tables']['projects']['Row'] & {
+  clients?: {
+    id: string;
+    name: string;
+  } | null;
+};
 type Ticket = Database['public']['Tables']['tickets']['Row'];
 
 type ProjectCardProps = {
@@ -118,7 +123,9 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectArchived })
         <div className="flex items-start justify-between mb-4">
           <div>
             <h3 className="text-lg font-orbitron text-star-white">{project.name}</h3>
-            <p className="text-sm text-moon-gray">{project.client_name || 'Projet interne'}</p>
+            <p className="text-sm text-moon-gray">
+              {project.clients?.name || project.client_name || 'Projet interne'}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             {urgentCount > 0 && (

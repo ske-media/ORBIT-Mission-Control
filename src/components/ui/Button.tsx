@@ -1,67 +1,57 @@
-import React from 'react';
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
 
-type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
-type ButtonSize = 'sm' | 'md' | 'lg';
+import { cn } from "@/lib/utils"
 
-type ButtonProps = {
-  children: React.ReactNode;
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  className?: string;
-  iconLeft?: React.ReactNode;
-  iconRight?: React.ReactNode;
-  fullWidth?: boolean;
-  onClick?: () => void;
-  disabled?: boolean;
-  type?: 'button' | 'submit' | 'reset';
-};
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline:
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
 
-const Button: React.FC<ButtonProps> = ({
-  children,
-  variant = 'primary',
-  size = 'md',
-  className = '',
-  iconLeft,
-  iconRight,
-  fullWidth = false,
-  onClick,
-  disabled = false,
-  type = 'button'
-}) => {
-  const variantClasses = {
-    primary: 'bg-nebula-purple hover:bg-nebula-purple-light text-star-white',
-    secondary: 'bg-galaxy-blue hover:bg-galaxy-blue-light text-star-white',
-    outline: 'bg-transparent border border-nebula-purple text-nebula-purple hover:bg-nebula-purple/10',
-    ghost: 'bg-transparent hover:bg-white/10 text-star-white',
-    danger: 'bg-red-alert hover:bg-red-alert/80 text-star-white'
-  };
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+}
 
-  const sizeClasses = {
-    sm: 'text-xs py-1.5 px-3',
-    md: 'text-sm py-2 px-4',
-    lg: 'text-base py-2.5 px-5'
-  };
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button"
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Button.displayName = "Button"
 
-  return (
-    <button
-      type={type}
-      className={`
-        ${variantClasses[variant]}
-        ${sizeClasses[size]}
-        ${fullWidth ? 'w-full' : ''}
-        rounded-md font-medium transition-all duration-200 ease-in-out
-        flex items-center justify-center gap-2
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-        ${className}
-      `}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      {iconLeft && <span className="flex-shrink-0">{iconLeft}</span>}
-      <span>{children}</span>
-      {iconRight && <span className="flex-shrink-0">{iconRight}</span>}
-    </button>
-  );
-};
-
-export default Button;
+export { buttonVariants }
+export default Button

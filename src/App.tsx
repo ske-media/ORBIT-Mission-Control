@@ -11,6 +11,8 @@ import NotificationsPage from './pages/notifications/NotificationsPage';
 import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import LoginPage from './pages/auth/LoginPage';
+import { ClientsPage } from './pages/ClientsPage';
+import { ClientDetailPage } from '@/pages/ClientDetailPage';
 
 function App() {
   return (
@@ -28,6 +30,8 @@ function App() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="projects" element={<ProjectsPage />} />
             <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+            <Route path="clients" element={<ClientsPage />} />
+            <Route path="clients/:id" element={<ClientDetailPage />} />
             <Route path="inbox" element={<InboxPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="settings" element={<SettingsPage />} />

@@ -18,7 +18,7 @@ import { updateTicket, getProjectMembers, createNotification } from '../../lib/s
 import { useAuth } from '../../contexts/AuthContext';
 import Input from '../ui/Input';
 import Textarea from '../ui/Textarea';
-import Select from '../ui/Select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import DatePicker from '../ui/DatePicker';
 import Avatar from '../ui/Avatar';
 
@@ -130,8 +130,7 @@ const EditTicketModal: React.FC<EditTicketModalProps> = ({
             content: `${assignerName} vous a assigné la tâche "${updatedTicket.title}".`,
             type: 'ticket_assigned',
             related_entity: 'ticket',
-            related_id: updatedTicket.id,
-            link: `/projects/${ticket.project_id}?ticket=${updatedTicket.id}`
+            related_id: updatedTicket.id
           });
         } catch (notifError) {
           console.error("Erreur création notification (assignation ticket):", notifError);
@@ -198,68 +197,109 @@ const EditTicketModal: React.FC<EditTicketModalProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
-            <div className="space-y-4">
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-star-white">Titre</label>
               <Input
-                label="Titre"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
                 placeholder="Titre du ticket"
               />
+            </div>
 
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-star-white">Description</label>
               <Textarea
-                label="Description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Description du ticket"
-                rows={4}
+                required
+                placeholder="Description détaillée du ticket"
+                className="min-h-[100px]"
               />
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select
-                  label="Priorité"
-                  value={priority}
-                  onChange={(value) => setPriority(value as TicketPriority)}
-                  options={priorityOptions}
-                />
-
-                <Select
-                  label="Statut"
-                  value={status}
-                  onChange={(value) => setStatus(value as TicketStatus)}
-                  options={statusOptions}
-                />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-star-white">Priorité</label>
+                <Select value={priority} onValueChange={(value: string) => setPriority(value as TicketPriority)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {priorityOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select
-                  label="Assigné à"
-                  value={assigneeId || ''}
-                  onChange={(value) => setAssigneeId(value || null)}
-                  options={[
-                    { value: '', label: 'Non assigné' },
-                    ...assigneeOptions
-                  ]}
-                />
-
-                <DatePicker
-                  label="Deadline"
-                  value={deadline}
-                  onChange={setDeadline}
-                  placeholder="Sélectionner une date"
-                />
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-star-white">Statut</label>
+                <Select value={status} onValueChange={(value: string) => setStatus(value as TicketStatus)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            <div className="pt-5 border-t border-white/10 flex justify-end gap-3 flex-shrink-0 mt-auto">
-              <Button variant="ghost" type="button" onClick={onCloseProp} disabled={isSubmitting || isLoadingMembers}>Annuler</Button>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-star-white">Assigné à</label>
+              <Select value={assigneeId || ''} onValueChange={(value: string) => setAssigneeId(value)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Non assigné</SelectItem>
+                  {assigneeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-star-white">Date limite</label>
+              <DatePicker
+                value={deadline}
+                onChange={setDeadline}
+                placeholder="Sélectionner une date"
+              />
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-4">
               <Button
-                variant="primary"
-                type="submit"
-                disabled={isSubmitting || isLoadingMembers || !title.trim() || !description.trim()}
+                type="button"
+                variant="outline"
+                onClick={onCloseProp}
+                disabled={isSubmitting || isLoadingMembers}
               >
-                {isSubmitting ? <><Loader2 size={16} className="animate-spin mr-2"/> Mise à jour...</> : isLoadingMembers ? 'Chargement...' : 'Mettre à jour'}
+                Annuler
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting || isLoadingMembers}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enregistrement...
+                  </>
+                ) : (
+                  'Enregistrer'
+                )}
               </Button>
             </div>
           </form>

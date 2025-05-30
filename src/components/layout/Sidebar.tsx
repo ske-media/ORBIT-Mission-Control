@@ -7,7 +7,8 @@ import {
   Settings, 
   LogOut,
   User,
-  Bell
+  Bell,
+  Users
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -55,6 +56,12 @@ const Sidebar: React.FC = () => {
       icon: <Rocket size={24} />, 
       label: 'Projets',
       activePattern: /^\/projects/ 
+    },
+    { 
+      path: '/clients', 
+      icon: <Users size={24} />, 
+      label: 'Clients',
+      activePattern: /^\/clients/ 
     },
     { 
       path: '/inbox', 

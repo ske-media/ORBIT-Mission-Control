@@ -4,12 +4,13 @@ import { X, AlertCircle } from 'lucide-react';
 import Button from '../ui/Button';
 import { createProject } from '../../lib/supabase';
 import { Database } from '../../types/supabase';
+import { ClientSelector } from '../clients/ClientSelector';
 
 type ProjectType = Database['public']['Tables']['projects']['Row'];
 type NewProjectData = {
   name: string;
   description: string;
-  client_name: string | null;
+  client_id: string | null;
   deadline: string | null;
   is_public: boolean;
 };
@@ -28,7 +29,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [newProject, setNewProject] = useState<NewProjectData>({
     name: '',
     description: '',
-    client_name: '',
+    client_id: null,
     deadline: null,
     is_public: false
   });
@@ -42,11 +43,15 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       const { checked } = e.target as HTMLInputElement;
       setNewProject(prev => ({ ...prev, [name]: checked }));
     } else {
-      const finalValue = (name === 'client_name' || name === 'deadline') && value === '' ? null : value;
+      const finalValue = (name === 'deadline') && value === '' ? null : value;
       setNewProject(prev => ({ ...prev, [name]: finalValue }));
     }
 
     setError(null);
+  };
+
+  const handleClientChange = (clientId: string | null) => {
+    setNewProject(prev => ({ ...prev, client_id: clientId }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -64,12 +69,13 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       const created = await createProject({
         name: newProject.name,
         description: newProject.description,
+        client_id: newProject.client_id,
         is_public: newProject.is_public || false,
       });
 
       onProjectCreated(created);
       onClose();
-      setNewProject({ name: '', description: '', client_name: '', deadline: null, is_public: false });
+      setNewProject({ name: '', description: '', client_id: null, deadline: null, is_public: false });
     } catch (err) {
       console.error("Erreur lors de la création du projet:", err);
       setError(err instanceof Error ? err.message : 'Une erreur inattendue est survenue.');
@@ -148,20 +154,14 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               />
             </div>
 
-            {/* Client Name Input */}
+            {/* Client Selector */}
             <div>
               <label htmlFor="projectClient" className="block text-sm text-moon-gray mb-1.5">
                 Client
               </label>
-              <input
-                id="projectClient"
-                name="client_name"
-                type="text"
-                value={newProject.client_name || ''}
-                onChange={handleInputChange}
-                className={`w-full bg-space-black border rounded-lg px-4 py-2.5 text-star-white focus:outline-none focus:ring-1 ${creating ? 'border-white/5 bg-white/5 cursor-wait' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple'}`}
-                placeholder="Nom du client (optionnel)"
-                disabled={creating}
+              <ClientSelector
+                value={newProject.client_id}
+                onChange={handleClientChange}
               />
             </div>
 

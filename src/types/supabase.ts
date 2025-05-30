@@ -93,19 +93,19 @@ export interface Database {
         Row: {
           project_id: string
           user_id: string
-          role: 'owner' | 'editor'
+          role: 'owner' | 'editor' | 'viewer'
           created_at: string
         }
         Insert: {
           project_id: string
           user_id: string
-          role: 'owner' | 'editor'
+          role: 'owner' | 'editor' | 'viewer'
           created_at?: string
         }
         Update: {
           project_id?: string
           user_id?: string
-          role?: 'owner' | 'editor'
+          role?: 'owner' | 'editor' | 'viewer'
           created_at?: string
         }
         Relationships: [
@@ -323,6 +323,122 @@ export interface Database {
           }
         ];
       };
+      clients: {
+        Row: {
+          id: string
+          name: string
+          contact_person_name: string | null
+          contact_person_email: string | null
+          contact_person_phone: string | null
+          company_address: string | null
+          company_website: string | null
+          notes: string | null
+          status: 'prospect' | 'active' | 'inactive' | 'archived'
+          source: string | null
+          industry: string | null
+          created_by_user_id: string
+          assigned_to_user_id: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          contact_person_name?: string | null
+          contact_person_email?: string | null
+          contact_person_phone?: string | null
+          company_address?: string | null
+          company_website?: string | null
+          notes?: string | null
+          status?: 'prospect' | 'active' | 'inactive' | 'archived'
+          source?: string | null
+          industry?: string | null
+          created_by_user_id?: string
+          assigned_to_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          contact_person_name?: string | null
+          contact_person_email?: string | null
+          contact_person_phone?: string | null
+          company_address?: string | null
+          company_website?: string | null
+          notes?: string | null
+          status?: 'prospect' | 'active' | 'inactive' | 'archived'
+          source?: string | null
+          industry?: string | null
+          created_by_user_id?: string
+          assigned_to_user_id?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clients_assigned_to_user_id_fkey"
+            columns: ["assigned_to_user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      client_interactions: {
+        Row: {
+          id: string
+          client_id: string
+          user_id: string
+          interaction_type: 'call' | 'email' | 'meeting' | 'note' | 'linkedin'
+          interaction_date: string
+          summary: string
+          follow_up_needed: boolean
+          follow_up_date: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          client_id: string
+          user_id?: string
+          interaction_type: 'call' | 'email' | 'meeting' | 'note' | 'linkedin'
+          interaction_date?: string
+          summary: string
+          follow_up_needed?: boolean
+          follow_up_date?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          client_id?: string
+          user_id?: string
+          interaction_type?: 'call' | 'email' | 'meeting' | 'note' | 'linkedin'
+          interaction_date?: string
+          summary?: string
+          follow_up_needed?: boolean
+          follow_up_date?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_interactions_client_id_fkey"
+            columns: ["client_id"]
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_interactions_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: {
       [_ in never]: never
