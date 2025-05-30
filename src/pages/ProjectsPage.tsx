@@ -36,18 +36,19 @@ const ProjectsPage: React.FC = () => {
 
   // --- Fetch Projects ---
   const fetchProjects = useCallback(async () => {
-    setLoading(true); // Start loading
-    setError(null);   // Reset error
+    setLoading(true);
+    setError(null);
     try {
-      // getProjects now throws on error
       const data = await getProjects();
-      setProjects(data || []);
-      setFilteredProjects(data || []); // Initialize filtered list too
-    } catch (err) { // Catch the thrown error
+      // Filtrer les projets archivés
+      const activeProjects = data?.filter(project => !project.is_archived) || [];
+      setProjects(activeProjects);
+      setFilteredProjects(activeProjects);
+    } catch (err) {
       console.error('Erreur lors de la récupération des projets :', err);
-      setError(err instanceof Error ? err.message : 'Impossible de charger les projets.'); // Set error state
+      setError(err instanceof Error ? err.message : 'Impossible de charger les projets.');
     } finally {
-      setLoading(false); // Finish loading
+      setLoading(false);
     }
   }, []);
 

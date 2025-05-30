@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Send, MessageSquare, Trash2, X as IconX, AlertCircle, RefreshCw, Edit3, Briefcase } from 'lucide-react';
+import { Plus, Send, MessageSquare, Trash2, X as IconX, AlertCircle, RefreshCw, Edit3, Briefcase, Loader2 } from 'lucide-react';
 import Button from '../components/ui/Button';
 import Avatar from '../components/ui/Avatar';
-import TicketFormModal from '../components/tickets/TicketFormModal';
+import CreateTicketModal from '../components/tickets/CreateTicketModal';
 import {
   getCurrentUserProfile,
   getInboxItems,
@@ -142,10 +142,13 @@ const InboxPage: React.FC = () => {
     setCreatingItem(true);
     setError(null);
     try {
-      const newItemData = await createInboxItem({ content: newMessage /* , project_id: (si on ajoute un sélecteur ici) */ });
+      const newItemData = await createInboxItem({ 
+        content: newMessage,
+        project_id: null // Ajout du project_id requis
+      });
       setInboxItems(prevItems => [newItemData, ...prevItems].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
       setNewMessage('');
-      if (!usersMap[newItemData.created_by] && currentUser) { // Assure que le créateur est dans la map
+      if (!usersMap[newItemData.created_by] && currentUser) {
           setUsersMap(prev => ({ ...prev, [currentAuthUserId]: currentUser }));
       }
     } catch (err) {
@@ -290,15 +293,37 @@ const InboxPage: React.FC = () => {
                 </div>
               </div>
 
-               {/* Actions sur l'item */}
-               <div className="mt-3 pt-3 border-t border-white/5 flex justify-start items-center gap-2">
-                 <Button variant="ghost" size="sm" iconLeft={<MessageSquare size={14} />} onClick={() => !isDeletingThisItem && handleCommentOnItem(item.id)} className="text-moon-gray hover:text-star-white" title="Commenter (non implémenté)" disabled={isDeletingThisItem || showCreateTicketModal}>Commenter</Button>
-                 <Button variant="ghost" size="sm" iconLeft={<Plus size={14} />} onClick={() => !isDeletingThisItem && handleOpenCreateTaskModal(item)} className="text-moon-gray hover:text-star-white" title="Créer une tâche à partir de cette note" disabled={isDeletingThisItem || showCreateTicketModal}>Créer tâche</Button>
-                 {/* Placeholder pour un bouton "Lier à un projet" */}
-                 {/* {!item.project_id && <Button variant="ghost" size="sm" iconLeft={<Briefcase size={14}/>} className="text-moon-gray hover:text-star-white">Lier projet</Button>} */}
-                 <div className="flex-grow"></div> {/* Espace pour pousser le bouton supprimer à droite */}
-                 <Button variant="ghost" size="sm" onClick={() => handleDeleteItem(item.id)} className={`text-red-alert/60 hover:text-red-alert hover:bg-red-alert/10 p-1.5 ${isDeletingThisItem ? 'cursor-wait' : ''}`} title="Supprimer la note" disabled={!!deletingItemId || showCreateTicketModal}>
-                   {isDeletingThisItem ? <Loader2 size={16} className="animate-spin"/> : <Trash2 size={16} />}
+               {/* Actions pour chaque item */}
+               <div className="flex items-center gap-2">
+                 <Button
+                   variant="ghost"
+                   size="sm"
+                   iconLeft={<MessageSquare size={16} />}
+                   onClick={() => handleCommentOnItem(item.id)}
+                   className="text-moon-gray hover:text-star-white"
+                   disabled={deletingItemId === item.id}
+                 >
+                   Commenter
+                 </Button>
+                 <Button
+                   variant="ghost"
+                   size="sm"
+                   iconLeft={<Briefcase size={16} />}
+                   onClick={() => handleOpenCreateTaskModal(item)}
+                   className="text-moon-gray hover:text-star-white"
+                   disabled={deletingItemId === item.id}
+                 >
+                   Créer un ticket
+                 </Button>
+                 <Button
+                   variant="ghost"
+                   size="sm"
+                   iconLeft={deletingItemId === item.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                   onClick={() => handleDeleteItem(item.id)}
+                   className="text-moon-gray hover:text-red-alert"
+                   disabled={deletingItemId === item.id}
+                 >
+                   {deletingItemId === item.id ? 'Suppression...' : 'Supprimer'}
                  </Button>
                </div>
             </motion.div>
@@ -306,7 +331,7 @@ const InboxPage: React.FC = () => {
         })}
       </div>
 
-      {/* Modale de Création de Ticket */}
+      {/* Modal de Création de Ticket */}
       {showCreateTicketModal && selectedInboxItemForTicket && (
         <CreateTicketModal
           isOpen={showCreateTicketModal}
@@ -314,18 +339,12 @@ const InboxPage: React.FC = () => {
             setShowCreateTicketModal(false);
             setSelectedInboxItemForTicket(null);
           }}
-          projectId={selectedInboxItemForTicket.project_id || undefined}
-          projectName={selectedInboxItemForTicket.project_id ? projectsLinkedMap[selectedInboxItemForTicket.project_id]?.name : undefined}
           availableProjects={availableProjectsForModal}
-          defaultTitle={selectedInboxItemForTicket.content.substring(0, 70)}
+          defaultTitle={selectedInboxItemForTicket.content}
           defaultDescription={selectedInboxItemForTicket.content}
-          initialStatus={TicketStatus.TODO}
-          onTicketCreated={(newTicket: TicketType) => {
-            console.log("Ticket créé depuis l'inbox:", newTicket);
-            alert(`Ticket "${newTicket.title}" créé avec succès pour le projet "${projectsLinkedMap[newTicket.project_id]?.name || 'Non spécifié'}" !`);
-            if(selectedInboxItemForTicket){ // Sécurité
-                 handleDeleteItem(selectedInboxItemForTicket.id);
-            }
+          onTicketCreated={(newTicket) => {
+            // Optionnel : Supprimer l'item de l'inbox après création du ticket
+            handleDeleteItem(selectedInboxItemForTicket.id);
             setShowCreateTicketModal(false);
             setSelectedInboxItemForTicket(null);
           }}

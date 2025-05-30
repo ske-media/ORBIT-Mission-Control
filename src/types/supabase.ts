@@ -51,6 +51,8 @@ export interface Database {
           owner_id: string
           is_public: boolean
           is_archived: boolean
+          client_name: string | null
+          deadline: string | null
           created_at: string
           updated_at: string
         }
@@ -61,6 +63,8 @@ export interface Database {
           owner_id: string
           is_public?: boolean
           is_archived?: boolean
+          client_name?: string | null
+          deadline?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -71,6 +75,8 @@ export interface Database {
           owner_id?: string
           is_public?: boolean
           is_archived?: boolean
+          client_name?: string | null
+          deadline?: string | null
           created_at?: string
           updated_at?: string
         }

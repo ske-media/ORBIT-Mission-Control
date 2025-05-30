@@ -12,14 +12,17 @@ import {
   Briefcase,
   Loader2,
   AlertTriangle,
+  Plus,
 } from 'lucide-react';
 import Button from '../ui/Button';
 import { TicketStatus, TicketPriority, TicketStatusLabels } from '../../types';
 import { Database } from '../../types/supabase';
 import { createTicket, getProjectMembers, createNotification } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
+import CreateProjectModal from '../projects/CreateProjectModal';
 
 type TicketType = Database['public']['Tables']['tickets']['Row'];
+type ProjectType = Database['public']['Tables']['projects']['Row'];
 type UserType = Database['public']['Tables']['users']['Row'];
 type ProjectTypeForSelect = Pick<Database['public']['Tables']['projects']['Row'], 'id' | 'name'>;
 type NewTicketData = {
@@ -77,11 +80,13 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedProjectName, setSelectedProjectName] = useState<string | null>(null);
   const [projectMembers, setProjectMembers] = useState<UserType[]>([]);
+  const [availableProjects, setAvailableProjects] = useState<ProjectTypeForSelect[]>(availableProjectsProp);
 
   // --- États UI ---
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showCreateProjectModal, setShowCreateProjectModal] = useState(false);
 
 
   // Effet #1: Logique de RÉINITIALISATION DU FORMULAIRE et de CONFIGURATION INITIALE.
@@ -127,13 +132,10 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     // re-render du parent (qui pourrait passer de nouvelles références pour ces props).
     // C'est un pattern courant pour les modales : initialiser à l'ouverture.
   }, [isOpen]);
-  // Note: Si `defaultTitleProp`, etc., *doivent* pouvoir changer et mettre à jour le formulaire
-  // *pendant que la modale est ouverte*, alors la logique devient plus complexe et
-  // il faudrait les ajouter aux dépendances et gérer la mise à jour du titre
-  // différemment (par exemple, ne mettre à jour `title` que si `defaultTitleProp` change *et*
-  // que `title` est toujours égal à la *précédente* `defaultTitleProp`).
-  // Pour une modale de création simple, le reset à l'ouverture est généralement suffisant.
 
+  useEffect(() => {
+    setAvailableProjects(availableProjectsProp);
+  }, [availableProjectsProp]);
 
   // Effet #2: CHARGEMENT DES MEMBRES du projet.
   // Se déclenche quand `isOpen` est vrai ET `selectedProjectId` (l'état interne) change.
@@ -171,7 +173,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       setSelectedProjectName(null);
     } else {
       setSelectedProjectId(newProjectId); // Déclenchera l'effet #2
-      const project = availableProjectsProp.find(p => p.id === newProjectId);
+      const project = availableProjects.find(p => p.id === newProjectId);
       setSelectedProjectName(project?.name || null);
     }
     setAssigneeId(null); // Toujours réinitialiser l'assigné lors du changement de projet
@@ -238,6 +240,18 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     }
   };
 
+  const handleProjectCreated = (newProject: ProjectType) => {
+    // Ajouter le nouveau projet à la liste des projets disponibles
+    const newProjectForSelect: ProjectTypeForSelect = {
+      id: newProject.id,
+      name: newProject.name
+    };
+    setAvailableProjects(prev => [...prev, newProjectForSelect]);
+    // Sélectionner automatiquement le nouveau projet
+    setSelectedProjectId(newProject.id);
+    setSelectedProjectName(newProject.name);
+  };
+
   if (!isOpen) return null;
 
   const canShowFullForm = !!selectedProjectId;
@@ -272,9 +286,20 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           <form onSubmit={handleSubmit} className="p-5 flex-1 overflow-y-auto space-y-5 custom-scrollbar">
             {!initialProjectIdProp && (
               <div>
-                <label htmlFor="projectSelectorTicket" className="flex items-center text-sm text-moon-gray mb-1.5">
-                  <Briefcase size={14} className="mr-2" /> Projet <span className="text-red-alert ml-1">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="projectSelectorTicket" className="flex items-center text-sm text-moon-gray">
+                    <Briefcase size={14} className="mr-2" /> Projet <span className="text-red-alert ml-1">*</span>
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    iconLeft={<Plus size={14} />}
+                    onClick={() => setShowCreateProjectModal(true)}
+                    className="text-moon-gray hover:text-star-white"
+                  >
+                    Nouveau projet
+                  </Button>
+                </div>
                 <select
                   id="projectSelectorTicket"
                   value={selectedProjectId || "null"}
@@ -283,7 +308,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   disabled={isSubmitting || isLoadingMembers || !!initialProjectIdProp}
                 >
                   <option value="null">-- Sélectionner un projet --</option>
-                  {availableProjectsProp.map(proj => ( <option key={proj.id} value={proj.id}>{proj.name}</option> ))}
+                  {availableProjects.map(proj => ( <option key={proj.id} value={proj.id}>{proj.name}</option> ))}
                 </select>
               </div>
             )}
@@ -347,6 +372,13 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
           </form>
         </motion.div>
       </div>
+
+      {/* Modal de Création de Projet */}
+      <CreateProjectModal
+        isOpen={showCreateProjectModal}
+        onClose={() => setShowCreateProjectModal(false)}
+        onProjectCreated={handleProjectCreated}
+      />
     </AnimatePresence>
   );
 };
