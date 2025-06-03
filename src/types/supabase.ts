@@ -16,6 +16,7 @@ export interface Database {
           email: string
           avatar: string
           role: 'admin' | 'collaborator'
+          current_organization_id: string | null
           created_at: string
         }
         Insert: {
@@ -24,6 +25,7 @@ export interface Database {
           email: string
           avatar?: string
           role?: 'admin' | 'collaborator'
+          current_organization_id?: string | null
           created_at?: string
         }
         Update: {
@@ -32,6 +34,7 @@ export interface Database {
           email?: string
           avatar?: string
           role?: 'admin' | 'collaborator'
+          current_organization_id?: string | null
           created_at?: string
         }
         Relationships: [
@@ -39,6 +42,12 @@ export interface Database {
             foreignKeyName: "users_id_fkey"
             columns: ["id"]
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "users_current_organization_id_fkey"
+            columns: ["current_organization_id"]
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           }
         ]
@@ -438,6 +447,136 @@ export interface Database {
             referencedColumns: ["id"]
           }
         ]
+      }
+      organizations: {
+        Row: {
+          id: string;
+          name: string;
+          industry: string;
+          company_size?: string;
+          company_address?: string;
+          company_website?: string;
+          primary_language: 'FR' | 'EN';
+          timezone: string;
+          status: 'prospect' | 'active' | 'inactive' | 'archived';
+          acquisition_source?: string;
+          tags?: string[];
+          notes?: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['organizations']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['organizations']['Row']>;
+        Relationships: [];
+      }
+      contacts: {
+        Row: {
+          id: string;
+          organization_id: string;
+          first_name: string;
+          last_name: string;
+          role?: string;
+          email?: string;
+          phone?: string;
+          preferred_channel?: 'email' | 'phone' | 'whatsapp' | 'sms';
+          language?: 'FR' | 'EN';
+          calendly_link?: string;
+          notes?: string;
+          is_primary: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['contacts']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['contacts']['Row']>;
+        Relationships: [
+          {
+            foreignKeyName: "contacts_organization_id_fkey";
+            columns: ["organization_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          }
+        ];
+      }
+      interactions: {
+        Row: {
+          id: string;
+          organization_id: string;
+          contact_id?: string;
+          type: 'meeting' | 'call' | 'email' | 'whatsapp' | 'sms' | 'other';
+          date: string;
+          title: string;
+          description?: string;
+          location?: string;
+          status: 'scheduled' | 'completed' | 'cancelled';
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['interactions']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['interactions']['Row']>;
+        Relationships: [
+          {
+            foreignKeyName: "interactions_organization_id_fkey";
+            columns: ["organization_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "interactions_contact_id_fkey";
+            columns: ["contact_id"];
+            referencedRelation: "contacts";
+            referencedColumns: ["id"];
+          }
+        ];
+      }
+      proposals: {
+        Row: {
+          id: string;
+          organization_id: string;
+          title: string;
+          amount: number;
+          currency: string;
+          status: 'draft' | 'sent' | 'accepted' | 'rejected';
+          sent_date?: string;
+          response_date?: string;
+          notes?: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['proposals']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['proposals']['Row']>;
+        Relationships: [
+          {
+            foreignKeyName: "proposals_organization_id_fkey";
+            columns: ["organization_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          }
+        ];
+      }
+      organization_projects: {
+        Row: {
+          id: string;
+          organization_id: string;
+          title: string;
+          description?: string;
+          start_date: string;
+          end_date?: string;
+          status: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+          amount: number;
+          currency: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: Omit<Database['public']['Tables']['organization_projects']['Row'], 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Database['public']['Tables']['organization_projects']['Row']>;
+        Relationships: [
+          {
+            foreignKeyName: "organization_projects_organization_id_fkey";
+            columns: ["organization_id"];
+            referencedRelation: "organizations";
+            referencedColumns: ["id"];
+          }
+        ];
       }
     }
     Views: {

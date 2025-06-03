@@ -32,6 +32,82 @@ export type ProjectMemberWithUser = ProjectMember & {
 
 type ProjectType = Database['public']['Tables']['projects']['Row'];
 
+export interface Organization {
+  id: string;
+  name: string;
+  industry: string;
+  company_size?: string;
+  company_address?: string;
+  company_website?: string;
+  primary_language: 'FR' | 'EN';
+  timezone: string;
+  status: 'prospect' | 'active' | 'inactive' | 'archived';
+  acquisition_source?: string;
+  tags?: string[];
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type Contact = {
+  id: string;
+  organization_id: string;
+  first_name: string;
+  last_name: string;
+  role?: string;
+  email?: string;
+  phone?: string;
+  preferred_channel?: 'email' | 'phone' | 'whatsapp' | 'sms';
+  language?: 'FR' | 'EN';
+  calendly_link?: string;
+  notes?: string;
+  is_primary: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Interaction = {
+  id: string;
+  organization_id: string;
+  contact_id?: string;
+  type: 'meeting' | 'call' | 'email' | 'whatsapp' | 'sms' | 'other';
+  date: string;
+  title: string;
+  description?: string;
+  location?: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+  created_at: string;
+  updated_at: string;
+};
+
+export type Proposal = {
+  id: string;
+  organization_id: string;
+  title: string;
+  amount: number;
+  currency: string;
+  status: 'draft' | 'sent' | 'accepted' | 'rejected';
+  sent_date?: string;
+  response_date?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OrganizationProject = {
+  id: string;
+  organization_id: string;
+  title: string;
+  description?: string;
+  start_date: string;
+  end_date?: string;
+  status: 'planned' | 'in_progress' | 'completed' | 'cancelled';
+  amount: number;
+  currency: string;
+  created_at: string;
+  updated_at: string;
+};
+
 // ==================================
 // Auth Helpers
 // ==================================
@@ -669,7 +745,7 @@ export const archiveClient = async (clientId: string): Promise<Client | null> =>
 };
 
 export const getClients = async (filters?: {
-  status?: string;
+  status?: 'prospect' | 'active' | 'inactive' | 'archived';
   assignedToUserId?: string;
   searchQuery?: string;
 }): Promise<Client[]> => {
@@ -776,3 +852,436 @@ export const deleteClientInteraction = async (interactionId: string): Promise<vo
     throw error;
   }
 };
+
+// ==================================
+// Organizations Table Helpers
+// ==================================
+export async function getOrganizations(filters?: {
+  status?: 'all' | 'prospect' | 'active' | 'inactive' | 'archived';
+  searchQuery?: string;
+  tags?: string[];
+}): Promise<Organization[]> {
+  let query = supabase
+    .from('organizations')
+    .select('*')
+    .order('name');
+
+  if (filters?.status && filters.status !== 'all') {
+    const status = filters.status as 'prospect' | 'active' | 'inactive' | 'archived';
+    query = query.eq('status', status);
+  }
+
+  if (filters?.searchQuery) {
+    query = query.or(
+      `name.ilike.%${filters.searchQuery}%,industry.ilike.%${filters.searchQuery}%,company_website.ilike.%${filters.searchQuery}%`
+    );
+  }
+
+  if (filters?.tags && filters.tags.length > 0) {
+    query = query.contains('tags', filters.tags);
+  }
+
+  try {
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data || []).map(org => ({
+      ...org,
+      tags: org.tags || [],
+    }));
+  } catch (error) {
+    console.error('Error fetching organizations:', error);
+    return [];
+  }
+}
+
+export async function getOrganization(id: string): Promise<Organization | null> {
+  try {
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+    if (!data) return null;
+
+    return {
+      ...data,
+      tags: data.tags || [],
+    };
+  } catch (error) {
+    console.error('Error fetching organization:', error);
+    return null;
+  }
+}
+
+export async function createOrganization(organization: Omit<Organization, 'id' | 'created_at' | 'updated_at'>): Promise<Organization | null> {
+  try {
+    const { data, error } = await supabase
+      .from('organizations')
+      .insert({
+        ...organization,
+        tags: organization.tags || [],
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return null;
+
+    return {
+      ...data,
+      tags: data.tags || [],
+    };
+  } catch (error) {
+    console.error('Error creating organization:', error);
+    return null;
+  }
+}
+
+export async function updateOrganization(id: string, organization: Partial<Organization>): Promise<Organization | null> {
+  try {
+    const { data, error } = await supabase
+      .from('organizations')
+      .update({
+        ...organization,
+        tags: organization.tags || [],
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    if (!data) return null;
+
+    return {
+      ...data,
+      tags: data.tags || [],
+    };
+  } catch (error) {
+    console.error('Error updating organization:', error);
+    return null;
+  }
+}
+
+export async function deleteOrganization(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('organizations')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting organization:', error);
+    throw error;
+  }
+}
+
+export const archiveOrganization = async (organizationId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('organizations')
+    .update({ status: 'archived' as const, updated_at: new Date().toISOString() })
+    .eq('id', organizationId);
+
+  if (error) {
+    console.error(`Error archiving organization (${organizationId}):`, error);
+    throw error;
+  }
+};
+
+export const unarchiveOrganization = async (organizationId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('organizations')
+    .update({ status: 'active' as const, updated_at: new Date().toISOString() })
+    .eq('id', organizationId);
+
+  if (error) {
+    console.error(`Error unarchiving organization (${organizationId}):`, error);
+    throw error;
+  }
+};
+
+export const getArchivedOrganizations = async (): Promise<Organization[]> => {
+  const { data, error } = await supabase
+    .from('organizations')
+    .select('*')
+    .eq('status', 'archived' as const)
+    .order('name');
+
+  if (error) {
+    console.error('Error fetching archived organizations:', error);
+    throw error;
+  }
+
+  return (data || []).map(org => ({
+    ...org,
+    tags: org.tags || [],
+  }));
+};
+
+// ==================================
+// Contacts Table Helpers
+// ==================================
+export async function getContacts(organizationId: string): Promise<Contact[]> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('is_primary', { ascending: false })
+    .order('last_name');
+
+  if (error) {
+    console.error('Error fetching contacts:', error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function createContact(contact: Omit<Contact, 'id' | 'created_at' | 'updated_at'>): Promise<Contact> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .insert([contact])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating contact:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateContact(id: string, contact: Partial<Contact>): Promise<Contact> {
+  const { data, error } = await supabase
+    .from('contacts')
+    .update(contact)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating contact:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function deleteContact(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting contact:', error);
+    throw error;
+  }
+}
+
+// ==================================
+// Interactions Table Helpers
+// ==================================
+export async function getInteractions(organizationId: string, contactId?: string): Promise<Interaction[]> {
+  let query = supabase
+    .from('interactions')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('date', { ascending: false });
+
+  if (contactId) {
+    query = query.eq('contact_id', contactId);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    console.error('Error fetching interactions:', error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function createInteraction(interaction: Omit<Interaction, 'id' | 'created_at' | 'updated_at'>): Promise<Interaction> {
+  const { data, error } = await supabase
+    .from('interactions')
+    .insert([interaction])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating interaction:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateInteraction(id: string, interaction: Partial<Interaction>): Promise<Interaction> {
+  const { data, error } = await supabase
+    .from('interactions')
+    .update(interaction)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating interaction:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function deleteInteraction(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('interactions')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting interaction:', error);
+    throw error;
+  }
+}
+
+// ==================================
+// Proposals Table Helpers
+// ==================================
+export async function getProposals(organizationId: string): Promise<Proposal[]> {
+  const { data, error } = await supabase
+    .from('proposals')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('sent_date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching proposals:', error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function createProposal(proposal: Omit<Proposal, 'id' | 'created_at' | 'updated_at'>): Promise<Proposal> {
+  const { data, error } = await supabase
+    .from('proposals')
+    .insert([proposal])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating proposal:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateProposal(id: string, proposal: Partial<Proposal>): Promise<Proposal> {
+  const { data, error } = await supabase
+    .from('proposals')
+    .update(proposal)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating proposal:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function deleteProposal(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('proposals')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting proposal:', error);
+    throw error;
+  }
+}
+
+// ==================================
+// Organization Projects Table Helpers
+// ==================================
+export async function getOrganizationProjects(organizationId: string): Promise<OrganizationProject[]> {
+  const { data, error } = await supabase
+    .from('organization_projects')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .order('start_date', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching organization projects:', error);
+    throw error;
+  }
+
+  return data || [];
+}
+
+export async function createOrganizationProject(project: Omit<OrganizationProject, 'id' | 'created_at' | 'updated_at'>): Promise<OrganizationProject> {
+  const { data, error } = await supabase
+    .from('organization_projects')
+    .insert([project])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error creating organization project:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function updateOrganizationProject(id: string, project: Partial<OrganizationProject>): Promise<OrganizationProject> {
+  const { data, error } = await supabase
+    .from('organization_projects')
+    .update(project)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating organization project:', error);
+    throw error;
+  }
+
+  return data;
+}
+
+export async function deleteOrganizationProject(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('organization_projects')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting organization project:', error);
+    throw error;
+  }
+}
+
+export async function getOrganizationProject(organizationId: string, projectId: string): Promise<OrganizationProject | null> {
+  try {
+    const { data, error } = await supabase
+      .from('organization_projects')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('id', projectId)
+      .single();
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error fetching organization project:', error);
+    return null;
+  }
+}

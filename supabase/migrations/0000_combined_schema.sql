@@ -208,7 +208,7 @@ CREATE POLICY "View projects"
     (projects.is_public OR projects.owner_id = auth.uid() OR public.is_project_member(projects.id, auth.uid()))
     AND (NOT projects.is_archived OR projects.owner_id = auth.uid() OR public.is_project_member(projects.id, auth.uid()))
   );
-COMMENT ON POLICY "View projects" IS 'Permet aux utilisateurs authentifiés de voir les projets publics non archivés, ceux dont ils sont propriétaires, ou ceux dont ils sont membres.';
+COMMENT ON POLICY "View projects" ON public.projects IS 'Permet aux utilisateurs authentifiés de voir les projets publics non archivés, ceux dont ils sont propriétaires, ou ceux dont ils sont membres.';
 
 DROP POLICY IF EXISTS "Users can create projects" ON public.projects;
 CREATE POLICY "Users can create projects" ON public.projects FOR INSERT TO authenticated WITH CHECK (auth.uid() = owner_id);

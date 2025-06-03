@@ -6,39 +6,39 @@ import { Label } from '@/components/ui/Label';
 import Textarea from '@/components/ui/Textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/Select';
 import { toast } from 'sonner';
-import { createOrganizationProject, OrganizationProject } from '@/lib/supabase';
+import { createProposal, Proposal } from '@/lib/supabase';
 
-interface CreateProjectModalProps {
+interface CreateProposalModalProps {
   isOpen: boolean;
   onClose: () => void;
   organizationId: string;
-  onProjectCreated: () => void;
+  onProposalCreated: () => void;
 }
 
-interface ProjectFormData {
+interface ProposalFormData {
   title: string;
-  description: string;
-  start_date: string;
-  end_date: string;
-  status: 'planned' | 'in_progress' | 'completed' | 'cancelled';
   amount: string;
   currency: 'EUR' | 'USD';
+  status: Proposal['status'];
+  sent_date: string;
+  response_date: string;
+  notes: string;
 }
 
-const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
+export const CreateProposalModal: React.FC<CreateProposalModalProps> = ({
   isOpen,
   onClose,
   organizationId,
-  onProjectCreated,
+  onProposalCreated,
 }) => {
-  const [formData, setFormData] = React.useState<ProjectFormData>({
+  const [formData, setFormData] = React.useState<ProposalFormData>({
     title: '',
-    description: '',
-    start_date: new Date().toISOString().split('T')[0],
-    end_date: '',
-    status: 'planned',
     amount: '',
     currency: 'EUR',
+    status: 'draft',
+    sent_date: '',
+    response_date: '',
+    notes: '',
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -54,37 +54,36 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     e.preventDefault();
 
     try {
-      const project: Omit<OrganizationProject, 'id' | 'created_at' | 'updated_at'> = {
-        organization_id: organizationId,
+      const proposal: Omit<Proposal, 'id' | 'organization_id' | 'created_at' | 'updated_at'> = {
         title: formData.title,
-        description: formData.description,
-        start_date: new Date(formData.start_date).toISOString(),
-        end_date: formData.end_date ? new Date(formData.end_date).toISOString() : undefined,
-        status: formData.status,
         amount: parseFloat(formData.amount),
         currency: formData.currency,
+        status: formData.status,
+        sent_date: formData.sent_date ? new Date(formData.sent_date).toISOString() : null,
+        response_date: formData.response_date ? new Date(formData.response_date).toISOString() : null,
+        notes: formData.notes,
       };
 
-      await createOrganizationProject(project);
-      toast.success('Projet créé avec succès');
-      onProjectCreated();
+      await createProposal(proposal);
+      toast.success('Proposition créée avec succès');
+      onProposalCreated();
       onClose();
       resetForm();
     } catch (error) {
-      console.error('Error creating project:', error);
-      toast.error('Erreur lors de la création du projet');
+      console.error('Error creating proposal:', error);
+      toast.error('Erreur lors de la création de la proposition');
     }
   };
 
   const resetForm = () => {
     setFormData({
       title: '',
-      description: '',
-      start_date: new Date().toISOString().split('T')[0],
-      end_date: '',
-      status: 'planned',
       amount: '',
       currency: 'EUR',
+      status: 'draft',
+      sent_date: '',
+      response_date: '',
+      notes: '',
     });
   };
 
@@ -92,7 +91,7 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="bg-deep-space border-white/10 max-h-[90vh] overflow-y-auto">
         <DialogHeader className="sticky top-0 bg-deep-space z-10 pb-4">
-          <DialogTitle className="text-star-white">Nouveau projet</DialogTitle>
+          <DialogTitle className="text-star-white">Nouvelle proposition</DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -108,70 +107,6 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               required
               className="bg-space-black border-white/10 text-star-white"
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description" className="text-star-white">
-              Description
-            </Label>
-            <Textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              className="bg-space-black border-white/10 text-star-white"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="start_date" className="text-star-white">
-                Date de début *
-              </Label>
-              <Input
-                id="start_date"
-                name="start_date"
-                type="date"
-                value={formData.start_date}
-                onChange={handleInputChange}
-                required
-                className="bg-space-black border-white/10 text-star-white"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="end_date" className="text-star-white">
-                Date de fin
-              </Label>
-              <Input
-                id="end_date"
-                name="end_date"
-                type="date"
-                value={formData.end_date}
-                onChange={handleInputChange}
-                className="bg-space-black border-white/10 text-star-white"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="status" className="text-star-white">
-              Statut
-            </Label>
-            <Select
-              value={formData.status}
-              onValueChange={(value) => handleSelectChange('status', value)}
-            >
-              <SelectTrigger className="bg-space-black border-white/10 text-star-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-deep-space border-white/10">
-                <SelectItem value="planned">En planification</SelectItem>
-                <SelectItem value="in_progress">En cours</SelectItem>
-                <SelectItem value="completed">Terminé</SelectItem>
-                <SelectItem value="cancelled">Annulé</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -211,6 +146,70 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="status" className="text-star-white">
+              Statut
+            </Label>
+            <Select
+              value={formData.status}
+              onValueChange={(value) => handleSelectChange('status', value)}
+            >
+              <SelectTrigger className="bg-space-black border-white/10 text-star-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-deep-space border-white/10">
+                <SelectItem value="draft">Brouillon</SelectItem>
+                <SelectItem value="sent">Envoyée</SelectItem>
+                <SelectItem value="accepted">Acceptée</SelectItem>
+                <SelectItem value="rejected">Refusée</SelectItem>
+                <SelectItem value="expired">Expirée</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="sent_date" className="text-star-white">
+                Date d'envoi
+              </Label>
+              <Input
+                id="sent_date"
+                name="sent_date"
+                type="date"
+                value={formData.sent_date}
+                onChange={handleInputChange}
+                className="bg-space-black border-white/10 text-star-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="response_date" className="text-star-white">
+                Date de réponse
+              </Label>
+              <Input
+                id="response_date"
+                name="response_date"
+                type="date"
+                value={formData.response_date}
+                onChange={handleInputChange}
+                className="bg-space-black border-white/10 text-star-white"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes" className="text-star-white">
+              Notes
+            </Label>
+            <Textarea
+              id="notes"
+              name="notes"
+              value={formData.notes}
+              onChange={handleInputChange}
+              className="bg-space-black border-white/10 text-star-white"
+            />
+          </div>
+
           <DialogFooter className="sticky bottom-0 bg-deep-space pt-4 border-t border-white/10">
             <Button
               type="button"
@@ -228,6 +227,4 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
       </DialogContent>
     </Dialog>
   );
-};
-
-export default CreateProjectModal; 
+}; 

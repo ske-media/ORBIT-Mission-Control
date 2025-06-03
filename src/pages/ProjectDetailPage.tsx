@@ -21,8 +21,12 @@ import {
   X as IconX,
   CheckCircle,
   Loader2,
+  ArrowLeft,
+  Edit,
+  Trash2,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 
 import { TicketStatus, TicketStatusLabels, TicketPriority, Ticket as AppTicketType } from '../types';
 import KanbanColumn from '../components/tickets/KanbanColumn';
@@ -40,10 +44,23 @@ import {
   createNotification,
   supabase,
   ProjectMemberWithUser,
+  getOrganizationProject,
+  deleteOrganizationProject,
+  OrganizationProject,
 } from '../lib/supabase';
 import { Database } from '../types/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import ProjectDetails from '../components/projects/ProjectDetails';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/AlertDialog';
 
 type ProjectType = Database['public']['Tables']['projects']['Row'];
 type UserProfile = Database['public']['Tables']['users']['Row'];
@@ -134,8 +151,8 @@ function projectDetailReducer(state: ProjectDetailState, action: ProjectDetailAc
   }
 }
 
-const ProjectDetailPage: React.FC = () => {
-  const { projectId } = useParams<{ projectId: string }>();
+export const ProjectDetailPage: React.FC = () => {
+  const { organizationId, projectId } = useParams<{ organizationId: string; projectId: string }>();
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
 
@@ -160,56 +177,48 @@ const ProjectDetailPage: React.FC = () => {
   const [updatingTicketId, setUpdatingTicketId] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationSuccess, setOperationSuccess] = useState<string | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const fetchData = useCallback(async (showLoadingSpinner = true) => {
-    if (!projectId) {
-      dispatch({ type: 'FETCH_ERROR', payload: "ID de projet manquant." });
-      return;
-    }
-    if (showLoadingSpinner) dispatch({ type: 'FETCH_START' });
-    setOperationError(null); setOperationSuccess(null);
+  const fetchProject = async () => {
+    if (!organizationId || !projectId) return;
 
     try {
-      const [projectData, ticketsData, membersData, currentUserProfileData] = await Promise.all([
-        getProjectById(projectId),
-        getTicketsByProject(projectId),
-        getProjectMembers(projectId),
-        getCurrentUserProfile(),
-      ]);
-
-      if (!projectData) throw new Error("Projet non trouvé ou accès refusé.");
+      setOperationError(null); setOperationSuccess(null);
+      const data = await getOrganizationProject(organizationId, projectId);
+      if (!data) throw new Error("Projet non trouvé ou accès refusé.");
+      setOperationSuccess("Projet chargé avec succès!");
 
       const userIdsToFetch = new Set<string>();
-      if (currentUserProfileData?.id) userIdsToFetch.add(currentUserProfileData.id);
-      projectData.owner_id && userIdsToFetch.add(projectData.owner_id);
-      (membersData || []).forEach(member => member.user_id && userIdsToFetch.add(member.user_id)); // Sécurisation
-      (ticketsData || []).forEach(ticket => ticket.assignee_id && userIdsToFetch.add(ticket.assignee_id)); // Sécurisation
+      if (data.owner_id) userIdsToFetch.add(data.owner_id);
+      (projectMembers || []).forEach(member => member.user_id && userIdsToFetch.add(member.user_id));
+      (tickets || []).forEach(ticket => ticket.assignee_id && userIdsToFetch.add(ticket.assignee_id));
 
       let usersFromDb: UserProfile[] = [];
       if (userIdsToFetch.size > 0) {
-        const { data, error: usersError } = await supabase.from('users').select('*').in('id', Array.from(userIdsToFetch));
+        const { data: usersData, error: usersError } = await supabase.from('users').select('*').in('id', Array.from(userIdsToFetch));
         if (usersError) console.warn("Erreur lors du fetch des détails utilisateurs:", usersError.message);
-        else usersFromDb = data || [];
+        else usersFromDb = usersData || [];
       }
 
       dispatch({
         type: 'FETCH_SUCCESS',
         payload: {
-          project: projectData,
-          tickets: ticketsData || [], // Assurer que c'est un tableau
-          members: membersData || [],   // Assurer que c'est un tableau
-          currentUserProfile: currentUserProfileData,
+          project: data,
+          tickets: tickets || [],
+          members: projectMembers || [],
+          currentUserProfile: currentUserProfile,
           usersFromDb
         },
       });
     } catch (err) {
+      setOperationError(err instanceof Error ? err.message : 'Erreur chargement projet.');
       dispatch({ type: 'FETCH_ERROR', payload: err instanceof Error ? err.message : 'Erreur chargement projet.' });
     }
-  }, [projectId]);
+  };
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchProject();
+  }, [organizationId, projectId]);
 
   const filteredTickets = useMemo(() => {
     // Sécurisation : s'assurer que tickets est bien un tableau avant de le spreader
@@ -358,10 +367,10 @@ const ProjectDetailPage: React.FC = () => {
 
 
   const handleMembersUpdate = useCallback(async () => {
-    if (!projectId) return;
+    if (!organizationId) return;
     setOperationSuccess(null); setOperationError(null);
     try {
-      const membersData = await getProjectMembers(projectId);
+      const membersData = await getProjectMembers(organizationId);
       const newUserIdsToFetch = (membersData || [])
         .map(m => m.user_id)
         .filter(id => id && !userMap[id]);
@@ -381,10 +390,32 @@ const ProjectDetailPage: React.FC = () => {
       setOperationError(`Erreur MàJ membres: ${err instanceof Error ? err.message : 'Inconnue'}`);
     }
     setTimeout(() => { setOperationSuccess(null); setOperationError(null); }, 3000);
-  }, [projectId, dispatch, userMap]);
+  }, [organizationId, dispatch, userMap]);
 
   const handleTicketUpdated = (updatedTicket: TicketType) => {
     dispatch({ type: 'UPDATE_TICKET_IN_LIST', payload: updatedTicket });
+  };
+
+  const handleBack = () => {
+    navigate(`/organizations/${organizationId}`);
+  };
+
+  const handleEdit = () => {
+    // TODO: Implémenter l'édition du projet
+    toast.info('Fonctionnalité d\'édition à venir');
+  };
+
+  const handleDelete = async () => {
+    if (!organizationId || !projectId) return;
+
+    try {
+      await deleteOrganizationProject(organizationId, projectId);
+      toast.success('Projet supprimé avec succès');
+      navigate(`/organizations/${organizationId}`);
+    } catch (error) {
+      toast.error('Erreur lors de la suppression du projet');
+      console.error('Error deleting project:', error);
+    }
   };
 
   // --- Render Logic ---
@@ -402,7 +433,7 @@ const ProjectDetailPage: React.FC = () => {
         <div className="p-4 inline-flex flex-col items-center bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg gap-3">
           <AlertCircle size={32} /> <span>{errorPage}</span>
           <Button variant="outline" size="sm" onClick={() => navigate('/projects')} className="mr-2">Retour projets</Button>
-          <Button variant="primary" size="sm" onClick={() => fetchData(true)} iconLeft={<RefreshCw size={14}/>}>Réessayer</Button>
+          <Button variant="primary" size="sm" onClick={() => fetchProject()} iconLeft={<RefreshCw size={14}/>}>Réessayer</Button>
         </div>
       </div>
     );
@@ -439,25 +470,43 @@ const ProjectDetailPage: React.FC = () => {
 
   // --- Affichage Principal ---
   return (
-    <div className="p-6 md:p-8 flex flex-col h-[calc(100vh-var(--header-height,4rem))]">
-      {/* ... (Notifications d'opération et Project Header comme avant) ... */}
-      {operationError && (
-        <div className="fixed top-20 right-8 z-[100] mb-4 p-3 bg-red-alert/20 text-red-alert border border-red-alert/30 rounded-lg flex items-center gap-2 text-sm shadow-lg animate-pulse">
-          <AlertCircle size={18} /> <span className='flex-1'>{operationError}</span>
-          <button onClick={() => setOperationError(null)} className="ml-auto text-red-alert/80 hover:text-red-alert flex-shrink-0"><IconX size={16}/></button>
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex justify-between items-center mb-8">
+        <div className="flex items-center gap-4">
+          <Button
+            onClick={handleBack}
+            variant="ghost"
+            className="text-moon-gray hover:text-star-white"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Retour
+          </Button>
+          <h1 className="text-3xl font-orbitron text-star-white">{project.title}</h1>
         </div>
-      )}
-      {operationSuccess && (
-        <div className="fixed top-20 right-8 z-[100] mb-4 p-3 bg-green-success/20 text-green-success border border-green-success/30 rounded-lg flex items-center gap-2 text-sm shadow-lg animate-pulse">
-          <CheckCircle size={18} /> <span className='flex-1'>{operationSuccess}</span>
-          <button onClick={() => setOperationSuccess(null)} className="ml-auto text-green-success/80 hover:text-green-success flex-shrink-0"><IconX size={16}/></button>
+        <div className="flex gap-2">
+          <Button
+            onClick={handleEdit}
+            variant="outline"
+            className="text-moon-gray hover:text-star-white"
+          >
+            <Edit className="h-4 w-4 mr-2" />
+            Modifier
+          </Button>
+          <Button
+            onClick={() => setIsDeleteDialogOpen(true)}
+            variant="destructive"
+            className="text-red-500 hover:text-red-400"
+          >
+            <Trash2 className="h-4 w-4 mr-2" />
+            Supprimer
+          </Button>
         </div>
-      )}
+      </div>
 
       <ProjectDetails 
         project={project} 
         onProjectArchived={() => {
-          fetchData(true);
+          fetchProject();
           navigate('/projects');
         }} 
       />
@@ -607,11 +656,11 @@ const ProjectDetailPage: React.FC = () => {
         />
       )}
 
-      {showMembersModal && project && projectId && (currentUserProfile || authUser) && (
+      {showMembersModal && project && organizationId && (currentUserProfile || authUser) && (
         <ProjectMembersModal
           isOpen={showMembersModal}
           onClose={() => setShowMembersModal(false)}
-          projectId={projectId}
+          projectId={organizationId}
           projectName={project.name}
           ownerId={project.owner_id}
           currentUserId={currentUserProfile?.id || authUser?.id || ''}
@@ -620,17 +669,41 @@ const ProjectDetailPage: React.FC = () => {
         />
       )}
 
-      {showTicketFormModal && project && projectId && (
+      {showTicketFormModal && project && organizationId && (
         <TicketFormModal
           isOpen={showTicketFormModal}
           onClose={handleCloseTicketFormModal}
-          projectId={projectId}
+          projectId={organizationId}
           projectName={project.name}
           initialStatus={initialTicketStatusForModal}
           onTicketCreated={handleTicketCreatedInPage}
           // availableProjects n'est pas nécessaire ici, le projet est fixe
         />
       )}
+
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent className="bg-deep-space border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-star-white">
+              Supprimer le projet
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-moon-gray">
+              Êtes-vous sûr de vouloir supprimer ce projet ? Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-space-black text-star-white hover:bg-space-black/80">
+              Annuler
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-500 text-white hover:bg-red-600"
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
