@@ -390,7 +390,7 @@ export const unarchiveProject = async (projectId: string): Promise<{ success: bo
     if (error) throw error;
     return { success: true };
   } catch (error) {
-    console.error('Erreur lors de la désarchivage du projet:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Erreur lors de la désarchivage du projet' };
+    console.error('Erreur lors du désarchivage du projet:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Erreur lors du désarchivage du projet' };
   }
 }; 
