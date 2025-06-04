@@ -46,7 +46,7 @@ const LoginPage: React.FC = () => {
             setError('Email ou mot de passe incorrect.');
             break;
           case 'Email not confirmed':
-            setError('Merci de confirmer votre adresse email. Vérifiez votre boîte de réception.');
+            setError('Merci de confirmer votre adresse email. Vérifiez votre boîte de réception.');
             break;
           default:
             setError(result.error.message);
@@ -141,16 +141,12 @@ const LoginPage: React.FC = () => {
 
               {/* Submit */}
               <Button
+                variant="default"
                 type="submit"
-                variant="primary"
-                fullWidth
                 disabled={loading}
+                className="w-full"
               >
-                {loading
-                  ? 'Chargement...'
-                  : isSignUp
-                  ? 'Créer un compte'
-                  : 'Se connecter'}
+                {loading ? 'Connexion...' : 'Se connecter'}
               </Button>
             </form>
           </div>
@@ -163,8 +159,8 @@ const LoginPage: React.FC = () => {
               className="text-nebula-purple hover:text-nebula-purple-light text-sm transition-colors"
             >
               {isSignUp
-                ? 'Déjà un compte ? Se connecter'
-                : "Pas de compte ? S'inscrire"}
+                ? 'Déjà un compte ? Se connecter'
+                : "Pas de compte ? S'inscrire"}
             </button>
           </div>
         </div>

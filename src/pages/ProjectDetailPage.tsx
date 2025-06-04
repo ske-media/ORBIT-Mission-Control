@@ -302,7 +302,10 @@ export const ProjectDetailPage: React.FC = () => {
           await createNotification({
             user_id: ticketApresUpdate.assignee_id,
             content: `${assignerName} vous a assigné la tâche "${ticketApresUpdate.title}" dans le projet "${project.name}".`,
-            type: 'ticket_assigned', related_entity: 'ticket', related_id: ticketApresUpdate.id,
+            type: 'ticket_assigned',
+            related_entity: 'ticket',
+            related_id: ticketApresUpdate.id,
+            is_read: false
           });
         } catch (notifError) { console.error("Erreur création notif (assignation):", notifError); }
       }
@@ -418,6 +421,26 @@ export const ProjectDetailPage: React.FC = () => {
     }
   };
 
+  const handleUpdateTicketStatus = async (ticketId: string, newStatus: TicketStatus) => {
+    try {
+      const ticketApresUpdate = await updateTicket(ticketId, { status: newStatus });
+      if (ticketApresUpdate.assignee_id && project) {
+        try {
+          await createNotification({
+            user_id: ticketApresUpdate.assignee_id,
+            content: `${currentUserProfile?.name || 'Un utilisateur'} a mis à jour le statut de la tâche "${ticketApresUpdate.title}" à "${TicketStatusLabels[newStatus]}" dans le projet "${project.name}".`,
+            type: 'ticket_updated',
+            related_entity: 'ticket',
+            related_id: ticketApresUpdate.id,
+            is_read: false
+          });
+        } catch (notifError) { console.error("Erreur création notif (mise à jour statut):", notifError); }
+      }
+    } catch (error) {
+      console.error('Erreur lors de la mise à jour du statut:', error);
+    }
+  };
+
   // --- Render Logic ---
   if (!initialDataLoaded && loadingPage) {
     return (
@@ -433,7 +456,10 @@ export const ProjectDetailPage: React.FC = () => {
         <div className="p-4 inline-flex flex-col items-center bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg gap-3">
           <AlertCircle size={32} /> <span>{errorPage}</span>
           <Button variant="outline" size="sm" onClick={() => navigate('/projects')} className="mr-2">Retour projets</Button>
-          <Button variant="primary" size="sm" onClick={() => fetchProject()} iconLeft={<RefreshCw size={14}/>}>Réessayer</Button>
+          <Button variant="default" size="sm" onClick={() => fetchProject()} className="flex items-center gap-2">
+            <RefreshCw size={14}/>
+            Réessayer
+          </Button>
         </div>
       </div>
     );
@@ -520,11 +546,18 @@ export const ProjectDetailPage: React.FC = () => {
         </StatCard>
         <StatCard icon={<Users size={18} />} title="Équipe" value={`${(projectMembers || []).length} membre${(projectMembers || []).length !== 1 ? 's' : ''}`}>
           <div className="flex -space-x-2 overflow-hidden mt-1.5 items-center">
-            {(projectMembers || []).slice(0, 5).map(member =>
-              member.users ? <Avatar key={member.user_id} src={member.users.avatar || ''} alt={member.users.name || ''} size="sm" className="border-2 border-deep-space" title={`${member.users.name || ''} (${member.role})`} /> : null
-            )}
-            {(projectMembers || []).length > 5 && <div key="plus-members" className="w-8 h-8 rounded-full bg-white/10 text-star-white flex items-center justify-center text-xs border-2 border-deep-space z-10">+{ (projectMembers || []).length - 5}</div>}
-            {isOwnerOrEditor && <Button variant="ghost" size="xs" iconLeft={<UserCog size={12} />} onClick={() => setShowMembersModal(true)} className="ml-auto !p-1 text-moon-gray hover:text-nebula-purple" title="Gérer les membres"/>}
+            {projectMembers?.map((member, index) => (
+              <Avatar
+                key={member.user_id}
+                src={member.users.avatar}
+                alt={member.users.name}
+                size="sm"
+                className={`border-2 border-deep-space ${index > 0 ? '-ml-2' : ''}`}
+              />
+            ))}
+            {isOwnerOrEditor && <Button variant="ghost" size="sm" onClick={() => setShowMembersModal(true)} className="ml-auto !p-1 text-moon-gray hover:text-nebula-purple flex items-center gap-2" title="Gérer les membres">
+              <UserCog size={12} />
+            </Button>}
           </div>
         </StatCard>
       </div>
@@ -541,7 +574,10 @@ export const ProjectDetailPage: React.FC = () => {
         <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
           <Button variant="ghost" size="sm" onClick={() => setFilterMine(!filterMine)} className={`!px-2.5 ${filterMine ? 'bg-nebula-purple/20 text-nebula-purple' : 'text-moon-gray hover:text-star-white'}`} title="Filtrer mes tâches"><ListFilter size={14} className="sm:mr-1.5"/> <span className="hidden sm:inline">Mes tâches</span></Button>
           <Button variant="ghost" size="sm" onClick={() => setFilterUrgent(!filterUrgent)} className={`!px-2.5 ${filterUrgent ? 'bg-red-alert/20 text-red-alert' : 'text-moon-gray hover:text-star-white'}`} title="Filtrer les tâches urgentes"><AlertTriangle size={14} className="sm:mr-1.5"/> <span className="hidden sm:inline">Urgentes</span></Button>
-          {isOwnerOrEditor && <Button variant="primary" size="sm" iconLeft={<Plus size={14}/>} onClick={() => handleOpenTicketFormModal()} title="Ajouter un nouveau ticket">Ticket</Button>}
+          {isOwnerOrEditor && <Button variant="default" size="sm" onClick={() => handleOpenTicketFormModal()} className="flex items-center gap-2" title="Ajouter un nouveau ticket">
+            <Plus size={14}/>
+            Ticket
+          </Button>}
         </div>
       </div>
 
@@ -660,11 +696,9 @@ export const ProjectDetailPage: React.FC = () => {
         <ProjectMembersModal
           isOpen={showMembersModal}
           onClose={() => setShowMembersModal(false)}
-          projectId={organizationId}
-          projectName={project.name}
-          ownerId={project.owner_id}
-          currentUserId={currentUserProfile?.id || authUser?.id || ''}
-          initialMembers={projectMembers || []} // Sécurisation
+          projectId={projectId}
+          projectName={project?.name || ''}
+          ownerId={project?.owner_id || ''}
           onMembersUpdate={handleMembersUpdate}
         />
       )}

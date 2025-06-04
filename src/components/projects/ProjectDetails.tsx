@@ -5,6 +5,7 @@ import Button from '../ui/Button';
 import { toast } from 'react-hot-toast';
 import { Database } from '../../types/supabase';
 import ConfirmModal from '../ui/ConfirmModal';
+import { Project } from "../../lib/supabase";
 
 type ProjectType = Database['public']['Tables']['projects']['Row'];
 

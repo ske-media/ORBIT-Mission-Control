@@ -8,7 +8,8 @@ import {
   Save,
   AlertCircle,
   CheckCircle,
-  User // Assure-toi que User est bien importé de lucide-react si tu l'utilises ailleurs
+  User,
+  Loader2
 } from 'lucide-react';
 import Avatar from '../components/ui/Avatar';
 import Button from '../components/ui/Button';
@@ -251,12 +252,13 @@ const ProfilePage: React.FC = () => {
           {/* Bouton "Modifier le profil" (visible seulement si PAS en mode édition) */}
           {!isEditing && (
             <Button
-              variant="outline"
-              onClick={() => { setIsEditing(true); setSaveError(null); setSaveSuccess(false); }} // Passe en mode édition
-              iconLeft={<Edit size={16} />}
-              disabled={loading || saving} // Désactivé si chargement initial ou sauvegarde
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-2"
             >
-              Modifier le profil
+              <Edit size={16} />
+              Modifier
             </Button>
           )}
         </div>
@@ -356,12 +358,12 @@ const ProfilePage: React.FC = () => {
                   </Button>
                   {/* Bouton Enregistrer */}
                   <Button
-                    variant="primary"
+                    variant="default"
                     type="submit"
-                    disabled={saving} // Désactivé pendant la sauvegarde
-                    iconLeft={saving ? null : <Save size={16} />} // Icône change si sauvegarde
+                    disabled={saving}
+                    className="flex items-center gap-2"
                   >
-                    {saving ? 'Enregistrement...' : 'Enregistrer'} {/* Texte change si sauvegarde */}
+                    {saving ? <><Loader2 size={16} className="animate-spin"/> Sauvegarde...</> : <><Save size={16} /> Sauvegarder</>}
                   </Button>
                 </div>
               )}

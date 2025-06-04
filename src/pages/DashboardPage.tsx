@@ -18,10 +18,11 @@ import {
 } from 'lucide-react';
 import ProjectCard from '../components/projects/ProjectCard';
 import Button from '../components/ui/Button';
-import { supabase, getProjects } from '../lib/supabase'; // getProjects pour la liste des projets
+import { supabase } from '../lib/supabase'; // getProjects pour la liste des projets
 import { Database } from '../types/supabase';
 import { TicketStatus, TicketPriority } from '../types';
 import { useNavigate } from 'react-router-dom';
+import { getProjects } from '../lib/supabase';
 // import { useAuth } from '../contexts/AuthContext'; // Pas utilisé activement pour l'instant
 
 type Project = Database['public']['Tables']['projects']['Row'];
@@ -166,7 +167,8 @@ const DashboardPage: React.FC = () => {
           <AlertCircleError size={40} />
           <h3 className="text-xl font-orbitron">Erreur de Chargement</h3>
           <p className="text-sm max-w-md">{error}</p>
-          <Button variant="primary" size="md" onClick={fetchData} iconLeft={<RefreshCw size={16}/>}>
+          <Button variant="default" size="sm" onClick={fetchData} className="flex items-center gap-2">
+            <RefreshCw size={16} />
             Réessayer
           </Button>
         </div>
@@ -182,7 +184,8 @@ const DashboardPage: React.FC = () => {
           <h1 className="text-3xl md:text-4xl font-orbitron text-star-white mb-1">Tableau de Bord</h1>
           <p className="text-moon-gray">Votre centre de contrôle galactique.</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={fetchData} iconLeft={<RefreshCw size={16}/>} disabled={loading} className="self-start sm:self-center">
+        <Button variant="default" size="sm" onClick={fetchData} className="self-start sm:self-center flex items-center gap-2">
+          <RefreshCw size={16} />
           {loading ? 'Actualisation...' : 'Rafraîchir'}
         </Button>
       </div>
@@ -257,14 +260,8 @@ const DashboardPage: React.FC = () => {
               </div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/projects')}
-            className="text-moon-gray hover:text-star-white"
-          >
+          <Button variant="default" size="sm" className="mt-6" onClick={() => navigate('/projects')}>
             Voir tous les projets
-            <ArrowRight size={14} className="ml-1" />
           </Button>
         </div>
 
@@ -338,7 +335,7 @@ const DashboardPage: React.FC = () => {
             <Rocket size={48} className="mx-auto text-moon-gray/50 mb-4" />
             <h3 className="text-lg font-medium text-star-white mb-1">Aucun projet à afficher</h3>
             <p className="text-sm text-moon-gray">Créez votre premier projet pour commencer !</p>
-            <Button variant="primary" size="md" className="mt-6" onClick={() => navigate('/projects')}>
+            <Button variant="default" size="sm" className="mt-6" onClick={() => navigate('/projects')}>
               Voir tous les projets
             </Button>
           </motion.div>

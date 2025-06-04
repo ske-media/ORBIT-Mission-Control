@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'; // Added useCallback
-import { Bell, Moon, Volume2, Globe, Shield, Key, Mail, Save, CheckCircle, AlertCircle } from 'lucide-react'; // Added Save, CheckCircle, AlertCircle
+import { Bell, Moon, Volume2, Globe, Shield, Key, Mail, Save, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'; // Added Save, CheckCircle, AlertCircle, Loader2
 import Button from '../components/ui/Button';
 import { getNotificationSettings, updateNotificationSettings, supabase } from '../lib/supabase'; // Import supabase for auth updates
 import { Database } from '../types/supabase';
@@ -414,12 +414,12 @@ const SettingsPage: React.FC = () => {
                   {/* Save Button */}
                   <div className="pt-6 border-t border-white/10 flex justify-end">
                     <Button
-                      variant={savedNotifSettings ? "success" : "primary"}
+                      variant="default"
                       onClick={handleSaveNotificationSettings}
-                      disabled={savingNotifSettings || loadingNotifSettings}
-                       iconLeft={savedNotifSettings ? <CheckCircle size={16}/> : savingNotifSettings ? null : <Save size={16}/>}
+                      disabled={savingNotifSettings}
+                      className="flex items-center gap-2"
                     >
-                      {savingNotifSettings ? 'Enregistrement...' : savedNotifSettings ? 'Enregistré' : 'Enregistrer les préférences'}
+                      {savedNotifSettings ? <><CheckCircle size={16}/> Sauvegardé</> : savingNotifSettings ? <><Loader2 size={16} className="animate-spin"/> Sauvegarde...</> : <><Save size={16}/> Sauvegarder</>}
                     </Button>
                   </div>
                 </div>

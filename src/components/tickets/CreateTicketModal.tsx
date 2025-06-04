@@ -17,14 +17,15 @@ import {
 import Button from '../ui/Button';
 import { TicketStatus, TicketPriority, TicketStatusLabels } from '../../types';
 import { Database } from '../../types/supabase';
-import { createTicket, getProjectMembers, createNotification } from '../../lib/supabase';
+import { createTicket, getProjectMembers, createNotification, OrganizationProject } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import CreateProjectModal from '../projects/CreateProjectModal';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 
 type TicketType = Database['public']['Tables']['tickets']['Row'];
-type ProjectType = Database['public']['Tables']['projects']['Row'];
+type ProjectType = OrganizationProject;
 type UserType = Database['public']['Tables']['users']['Row'];
-type ProjectTypeForSelect = Pick<Database['public']['Tables']['projects']['Row'], 'id' | 'name'>;
+type ProjectTypeForSelect = Pick<OrganizationProject, 'id' | 'title'>;
 type NewTicketData = {
   project_id: string;
   title: string;
@@ -41,9 +42,7 @@ interface CreateTicketModalProps {
   isOpen: boolean;
   onClose: () => void;
   projectId?: string;
-  projectName?: string;
-  // Assurez-vous que cette prop est mémoïsée dans le parent si elle est calculée dynamiquement.
-  // Pour une liste statique ou chargée une fois, ce n'est pas un souci.
+  projectTitle?: string;
   availableProjects?: ProjectTypeForSelect[];
   initialStatus?: TicketStatus;
   onTicketCreated: (newTicket: TicketType) => void;
@@ -51,17 +50,24 @@ interface CreateTicketModalProps {
   defaultDescription?: string;
 }
 
+interface CreateProjectModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  organizationId: string;
+  onProjectCreated: (project: ProjectType) => void;
+}
+
 // Référence stable pour un tableau vide, si availableProjects n'est pas fourni
 const STABLE_EMPTY_PROJECTS_ARRAY: ProjectTypeForSelect[] = [];
 
 const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
   isOpen,
-  onClose: onCloseProp, // Renommer pour s'assurer qu'elle est stable du parent (useCallback)
+  onClose: onCloseProp,
   projectId: initialProjectIdProp,
-  projectName: initialProjectNameProp,
-  availableProjects: availableProjectsProp = STABLE_EMPTY_PROJECTS_ARRAY, // Utilise la référence stable
+  projectTitle: initialProjectTitleProp,
+  availableProjects: availableProjectsProp = STABLE_EMPTY_PROJECTS_ARRAY,
   initialStatus: initialStatusProp,
-  onTicketCreated: onTicketCreatedProp, // Renommer pour s'assurer qu'elle est stable du parent (useCallback)
+  onTicketCreated: onTicketCreatedProp,
   defaultTitle: defaultTitleProp = '',
   defaultDescription: defaultDescriptionProp = '',
 }) => {
@@ -114,9 +120,9 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       // Détermine le nom du projet
       if (currentPId) {
         const projectFromArray = availableProjectsProp.find(p => p.id === currentPId);
-        setSelectedProjectName(projectFromArray?.name || initialProjectNameProp || null);
+        setSelectedProjectName(projectFromArray?.title || initialProjectTitleProp || null);
       } else {
-        setSelectedProjectName(initialProjectNameProp || null);
+        setSelectedProjectName(initialProjectTitleProp || null);
       }
 
       // Si aucun projet n'est sélectionné initialement, s'assurer que les membres sont vides
@@ -153,7 +159,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
       setProjectMembers([]);
       try {
         const members = await getProjectMembers(projectIdToLoad);
-        setProjectMembers(members.map(pm => pm.user).filter(Boolean));
+        setProjectMembers(members.map((pm: { user: UserType }) => pm.user).filter(Boolean));
       } catch (err) {
         console.error("Error fetching project members for modal:", err);
         setFormError("Impossible de charger les membres pour l'assignation.");
@@ -174,7 +180,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     } else {
       setSelectedProjectId(newProjectId); // Déclenchera l'effet #2
       const project = availableProjects.find(p => p.id === newProjectId);
-      setSelectedProjectName(project?.name || null);
+      setSelectedProjectName(project?.title || null);
     }
     setAssigneeId(null); // Toujours réinitialiser l'assigné lors du changement de projet
     setFormError(null);
@@ -226,6 +232,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
             type: 'ticket_assigned',
             related_entity: 'ticket',
             related_id: newTicket.id,
+            is_read: false
           });
         } catch (notifError) {
           console.error("Erreur création notification (assignation ticket):", notifError);
@@ -244,12 +251,12 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
     // Ajouter le nouveau projet à la liste des projets disponibles
     const newProjectForSelect: ProjectTypeForSelect = {
       id: newProject.id,
-      name: newProject.name
+      title: newProject.title
     };
     setAvailableProjects(prev => [...prev, newProjectForSelect]);
     // Sélectionner automatiquement le nouveau projet
     setSelectedProjectId(newProject.id);
-    setSelectedProjectName(newProject.name);
+    setSelectedProjectName(newProject.title);
   };
 
   if (!isOpen) return null;
@@ -293,10 +300,10 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   <Button
                     variant="ghost"
                     size="sm"
-                    iconLeft={<Plus size={14} />}
                     onClick={() => setShowCreateProjectModal(true)}
-                    className="text-moon-gray hover:text-star-white"
+                    className="text-moon-gray hover:text-star-white flex items-center gap-2"
                   >
+                    <Plus size={14} />
                     Nouveau projet
                   </Button>
                 </div>
@@ -308,7 +315,7 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                   disabled={isSubmitting || isLoadingMembers || !!initialProjectIdProp}
                 >
                   <option value="null">-- Sélectionner un projet --</option>
-                  {availableProjects.map(proj => ( <option key={proj.id} value={proj.id}>{proj.name}</option> ))}
+                  {availableProjects.map(proj => ( <option key={proj.id} value={proj.id}>{proj.title}</option> ))}
                 </select>
               </div>
             )}
@@ -326,59 +333,14 @@ const CreateTicketModal: React.FC<CreateTicketModalProps> = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="ticketStatus" className="flex items-center text-sm text-moon-gray mb-1.5"><ChevronDown size={14} className="mr-2" /> Statut <span className="text-red-alert ml-1">*</span></label>
-                    <select id="ticketStatus" value={status} onChange={(e) => setStatus(e.target.value as TicketStatus)} className={`w-full bg-space-black border rounded-lg px-3 py-2.5 text-star-white focus:outline-none focus:ring-1 appearance-none ${isSubmitting || isLoadingMembers ? 'opacity-70 cursor-not-allowed' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple hover:border-white/30'}`} disabled={isSubmitting || isLoadingMembers}>
-                      {Object.values(TicketStatus).map(s => (<option key={s} value={s}>{TicketStatusLabels[s]}</option>))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="ticketPriority" className="flex items-center text-sm text-moon-gray mb-1.5"><AlertTriangle size={14} className="mr-2" /> Priorité <span className="text-red-alert ml-1">*</span></label>
-                    <select id="ticketPriority" value={priority} onChange={(e) => setPriority(e.target.value as TicketPriority)} className={`w-full bg-space-black border rounded-lg px-3 py-2.5 text-star-white focus:outline-none focus:ring-1 appearance-none ${isSubmitting || isLoadingMembers ? 'opacity-70 cursor-not-allowed' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple hover:border-white/30'}`} disabled={isSubmitting || isLoadingMembers}>
-                      <option value={TicketPriority.LOW}>Basse</option><option value={TicketPriority.MEDIUM}>Moyenne</option><option value={TicketPriority.HIGH}>Haute</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="ticketAssignee" className="flex items-center text-sm text-moon-gray mb-1.5"><User size={14} className="mr-2" /> Assigné à</label>
-                    <select
-                      id="ticketAssignee"
-                      value={assigneeId || 'null'}
-                      onChange={(e) => setAssigneeId(e.target.value === 'null' ? null : e.target.value)}
-                      className={`w-full bg-space-black border rounded-lg px-3 py-2.5 text-star-white focus:outline-none focus:ring-1 appearance-none ${isSubmitting || isLoadingMembers || (projectMembers.length === 0 && !isLoadingMembers && !!selectedProjectId) ? 'opacity-70 cursor-not-allowed' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple hover:border-white/30'}`}
-                      disabled={isSubmitting || isLoadingMembers || (projectMembers.length === 0 && !isLoadingMembers && !!selectedProjectId) }
-                    >
-                      <option value="null">{isLoadingMembers ? 'Chargement membres...' : projectMembers.length === 0 && selectedProjectId ? 'Aucun membre disponible' : 'Non assigné'}</option>
-                      {projectMembers.map(member => (<option key={member.id} value={member.id}>{member.name}</option>))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="ticketDeadline" className="flex items-center text-sm text-moon-gray mb-1.5"><CalendarIcon size={14} className="mr-2" /> Deadline</label>
-                    <input id="ticketDeadline" type="date" value={deadline || ''} onChange={(e) => setDeadline(e.target.value || null)} className={`w-full bg-space-black border rounded-lg px-3 py-2.5 text-star-white focus:outline-none focus:ring-1 ${isSubmitting || isLoadingMembers ? 'opacity-70 cursor-not-allowed' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple hover:border-white/30'}`} disabled={isSubmitting || isLoadingMembers} />
+                    <select id="ticketStatus" value={status} onChange={(e) => setStatus(e.target.value as TicketStatus)} className={`w-full bg-space-black border rounded-lg px-3 py-2.5 text-star-white focus:outline-none focus:ring-1 appearance-none ${isSubmitting || isLoadingMembers ? 'opacity-70 cursor-not-allowed' : 'border-white/10 focus:border-nebula-purple focus:ring-nebula-purple hover:border-white/30'}`} disabled={isSubmitting || isLoadingMembers} required />
                   </div>
                 </div>
               </>
             )}
-
-            <div className="pt-5 border-t border-white/10 flex justify-end gap-3 flex-shrink-0 mt-auto">
-              <Button variant="ghost" type="button" onClick={onCloseProp} disabled={isSubmitting || isLoadingMembers}>Annuler</Button>
-              <Button
-                variant="primary"
-                type="submit"
-                disabled={isSubmitting || isLoadingMembers || !selectedProjectId || !title.trim() || !description.trim()}
-              >
-                {isSubmitting ? <><Loader2 size={16} className="animate-spin mr-2"/> Création...</> : isLoadingMembers && !selectedProjectId ? 'Sélectionner projet...' : isLoadingMembers ? 'Chargement...' : 'Créer le Ticket'}
-              </Button>
-            </div>
           </form>
         </motion.div>
       </div>
-
-      {/* Modal de Création de Projet */}
-      <CreateProjectModal
-        isOpen={showCreateProjectModal}
-        onClose={() => setShowCreateProjectModal(false)}
-        onProjectCreated={handleProjectCreated}
-      />
     </AnimatePresence>
   );
 };

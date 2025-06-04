@@ -12,7 +12,7 @@ interface CreateProjectModalProps {
   isOpen: boolean;
   onClose: () => void;
   organizationId: string;
-  onProjectCreated: () => void;
+  onProjectCreated: (project: OrganizationProject) => void;
 }
 
 interface ProjectFormData {
@@ -65,9 +65,9 @@ const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
         currency: formData.currency,
       };
 
-      await createOrganizationProject(project);
+      const newProject = await createOrganizationProject(project);
       toast.success('Projet créé avec succès');
-      onProjectCreated();
+      onProjectCreated(newProject);
       onClose();
       resetForm();
     } catch (error) {

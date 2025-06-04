@@ -213,8 +213,15 @@ const InboxPage: React.FC = () => {
           <h1 className="text-3xl font-orbitron text-star-white mb-2">Inbox</h1>
           <p className="text-moon-gray">Idées, demandes et notes à trier.</p>
         </div>
-        <Button variant="ghost" size="sm" onClick={fetchData} iconLeft={<RefreshCw size={16}/>} disabled={loading || creatingItem || !!deletingItemId}>
-          {loading ? 'Chargement...' : 'Rafraîchir'}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={fetchData}
+          disabled={loading || creatingItem || !!deletingItemId}
+          className="flex items-center gap-2"
+        >
+          <RefreshCw size={16}/>
+          Rafraîchir
         </Button>
       </div>
 
@@ -318,12 +325,12 @@ const InboxPage: React.FC = () => {
                  <Button
                    variant="ghost"
                    size="sm"
-                   iconLeft={deletingItemId === item.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                    onClick={() => handleDeleteItem(item.id)}
-                   className="text-moon-gray hover:text-red-alert"
                    disabled={deletingItemId === item.id}
+                   className="flex items-center gap-2"
                  >
-                   {deletingItemId === item.id ? 'Suppression...' : 'Supprimer'}
+                   {deletingItemId === item.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                   Supprimer
                  </Button>
                </div>
             </motion.div>

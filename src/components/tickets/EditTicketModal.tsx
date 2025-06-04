@@ -10,6 +10,7 @@ import {
   Layers,
   Loader2,
   AlertTriangle,
+  Edit3,
 } from 'lucide-react';
 import Button from '../ui/Button';
 import { TicketStatus, TicketPriority, TicketStatusLabels } from '../../types';
@@ -21,6 +22,7 @@ import Textarea from '../ui/Textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import DatePicker from '../ui/DatePicker';
 import Avatar from '../ui/Avatar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
 
 type TicketType = Database['public']['Tables']['tickets']['Row'];
 type UserType = Database['public']['Tables']['users']['Row'];
@@ -52,6 +54,7 @@ const EditTicketModal: React.FC<EditTicketModalProps> = ({
 
   // --- États Internes pour la Logique de la Modal ---
   const [projectMembers, setProjectMembers] = useState<UserType[]>([]);
+  const [project, setProject] = useState<UserType | null>(null);
 
   // --- États UI ---
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
@@ -63,11 +66,13 @@ const EditTicketModal: React.FC<EditTicketModalProps> = ({
     if (!isOpen || !ticket.project_id) return;
 
     const loadMembers = async () => {
+      if (!ticket) return;
       setIsLoadingMembers(true);
       setFormError(null);
       try {
         const members = await getProjectMembers(ticket.project_id);
-        setProjectMembers(members.map(pm => pm.user).filter(Boolean));
+        setProjectMembers(members.map((pm: { user: UserType }) => pm.user).filter(Boolean));
+        setProject(members.find(pm => pm.user.id === ticket.assignee_id)?.user || null);
       } catch (err) {
         console.error("Error fetching project members for modal:", err);
         setFormError("Impossible de charger les membres pour l'assignation.");
@@ -124,13 +129,15 @@ const EditTicketModal: React.FC<EditTicketModalProps> = ({
       if (ticket.assignee_id !== updatedTicket.assignee_id &&
           updatedTicket.assignee_id && updatedTicket.assignee_id !== authUser?.id) {
         const assignerName = authUser?.user_metadata?.name || "Quelqu'un";
+        const projectNameForNotif = project?.name || "un projet";
         try {
           await createNotification({
             user_id: updatedTicket.assignee_id,
-            content: `${assignerName} vous a assigné la tâche "${updatedTicket.title}".`,
+            content: `${assignerName} vous a assigné la tâche "${updatedTicket.title}" dans le projet "${projectNameForNotif}".`,
             type: 'ticket_assigned',
             related_entity: 'ticket',
-            related_id: updatedTicket.id
+            related_id: updatedTicket.id,
+            is_read: false
           });
         } catch (notifError) {
           console.error("Erreur création notification (assignation ticket):", notifError);

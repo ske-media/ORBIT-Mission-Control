@@ -24,8 +24,10 @@ import Avatar from '../ui/Avatar';
 import { Database } from '../../types/supabase';
 import { useAuth } from '../../contexts/AuthContext'; // Pour l'ID de l'utilisateur actuel
 import EditTicketModal from './EditTicketModal';
-import Select from '../ui/Select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import { addTicketAssignee, removeTicketAssignee, getTicketAssignees } from '../../lib/supabase';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/Dialog";
+import { Ticket as SupabaseTicket } from "../../lib/supabase";
 
 type TicketType = Database['public']['Tables']['tickets']['Row'];
 type UserType = Database['public']['Tables']['users']['Row'];
@@ -185,11 +187,11 @@ const TicketModal: React.FC<TicketModalProps> = ({
                 <Button
                   variant="ghost"
                   size="sm"
-                  iconLeft={<Edit3 size={16} />}
                   onClick={() => setShowEditModal(true)}
                   disabled={isUpdating}
                   className="text-moon-gray hover:text-star-white"
                 >
+                  <Edit3 size={16} className="mr-2" />
                   Modifier
                 </Button>
                 <button onClick={handleClose} className="text-moon-gray hover:text-star-white transition-colors p-1 rounded-full hover:bg-white/10" disabled={isUpdating}>
@@ -281,7 +283,7 @@ const TicketModal: React.FC<TicketModalProps> = ({
                   {statusOptions.map(option => (
                     <Button
                       key={option.value}
-                      variant={ticket.status.toLowerCase() === option.value.toLowerCase() ? 'primary' : 'outline'}
+                      variant={ticket.status.toLowerCase() === option.value.toLowerCase() ? 'default' : 'outline'}
                       size="sm"
                       onClick={() => handleStatusButtonClick(option.value)}
                       disabled={isUpdating}
@@ -314,11 +316,12 @@ const TicketModal: React.FC<TicketModalProps> = ({
               <Button variant="ghost" onClick={handleClose} disabled={isUpdating}>Fermer</Button>
               {ticket.status.toLowerCase() !== 'done' && (
                 <Button
-                  variant="primary"
+                  variant="default"
                   onClick={handleMarkAsDoneClick}
                   disabled={isUpdating}
-                  iconLeft={isUpdating ? <Loader2 size={16} className="animate-spin"/> : <CheckSquare size={16}/>}
+                  className="flex items-center gap-2"
                 >
+                  {isUpdating ? <Loader2 size={16} className="animate-spin"/> : <CheckSquare size={16}/>}
                   Marquer comme terminé
                 </Button>
               )}

@@ -62,13 +62,11 @@ const KanbanColumn: React.FC<KanbanColumnProps> = ({
         <Button
           variant="ghost"
           size="sm"
-          iconLeft={<Plus size={16} />}
-          onClick={() => onAddTicket(status)}
-          className="text-moon-gray hover:text-nebula-purple"
-          title={`Ajouter un ticket à "${title}"`}
+          onClick={onAddTicket}
+          className="w-full text-moon-gray hover:text-star-white flex items-center gap-2"
         >
-          {/* Optionnel : Ne pas afficher "Ajouter" si trop étroit, juste l'icône */}
-          {/* Ajouter */}
+          <Plus size={16} />
+          Ajouter un ticket
         </Button>
       </div>
 

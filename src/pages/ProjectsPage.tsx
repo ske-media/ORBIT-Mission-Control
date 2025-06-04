@@ -155,7 +155,7 @@ const ProjectsPage: React.FC = () => {
   };
 
   // Cette fonction est appelée par le composant CreateProjectModal externe une fois le projet créé.
-  const handleProjectCreatedInModal = useCallback(() => {
+  const handleProjectCreatedInModal = useCallback((newProject: OrganizationProject) => {
     setShowCreateModal(false); // Ferme la modale
     fetchData(); // Rafraîchit la liste des projets
     toast.success('Projet créé avec succès !');

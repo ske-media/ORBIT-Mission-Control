@@ -5,21 +5,27 @@ import { supabase, archiveProject } from '../../lib/supabase';
 import { Database } from '../../types/supabase';
 import { toast } from 'react-hot-toast';
 import Button from '../ui/Button';
+import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+import { Project } from "../../lib/supabase";
 
-type Project = Database['public']['Tables']['projects']['Row'] & {
+type ProjectType = Database['public']['Tables']['projects']['Row'] & {
+  project_members?: Array<{
+    user_id: string;
+    role: string;
+  }>;
   clients?: {
     id: string;
     name: string;
-  } | null;
-};
-type Ticket = Database['public']['Tables']['tickets']['Row'];
-
-type ProjectCardProps = {
-  project: Project;
-  onProjectArchived?: () => void;
+  };
 };
 
-const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectArchived }) => {
+interface ProjectCardProps {
+  project: ProjectType;
+  onArchive?: () => void;
+}
+
+const ProjectCard: React.FC<ProjectCardProps> = ({ project, onArchive }) => {
   const [completion, setCompletion] = useState(0);
   const [urgentCount, setUrgentCount] = useState(0);
   const [totalTickets, setTotalTickets] = useState(0);
@@ -102,7 +108,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project, onProjectArchived })
       const result = await archiveProject(project.id);
       if (result.success) {
         toast.success('Projet archivé avec succès');
-        onProjectArchived?.();
+        onArchive?.();
       } else {
         toast.error(result.error || 'Erreur lors de l\'archivage du projet');
       }

@@ -65,12 +65,13 @@ const NotificationsPage: React.FC = () => {
         </div>
         
         {hasUnreadNotifications && (
-          <Button 
-            variant="outline" 
+          <Button
+            variant="ghost"
             size="sm"
-            iconLeft={<Check size={16} />}
             onClick={handleMarkAllAsRead}
+            className="flex items-center gap-2"
           >
+            <Check size={16} />
             Tout marquer comme lu
           </Button>
         )}
