@@ -53,7 +53,7 @@ const SettingsPage: React.FC = () => {
       if (data) {
           setNotificationSettings(data);
       } else {
-           // Error should be logged inside getNotificationSettings if profile missing
+           // Profile was not found or could not be created
            throw new Error("Impossible de charger ou créer les paramètres de notification.");
       }
     } catch (err: any) {
