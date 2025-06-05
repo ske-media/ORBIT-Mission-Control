@@ -1,109 +1,118 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import React, { useState } from 'react';
+import { Search, User } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface Contact {
   id: string;
-  firstName: string;
-  lastName: string;
-  organization: {
-    id: string;
-    name: string;
-  };
-  phone: string;
+  first_name: string;
+  last_name: string;
   email: string;
+  phone: string;
   role: string;
+  organization_id: string;
+  organization_name: string;
+  preferred_language: 'FR' | 'EN';
+  notes: string;
+  created_at: string;
 }
 
-export function ContactList() {
-  const router = useRouter();
+interface ContactListProps {
+  contacts: Contact[];
+  onContactClick: (contact: Contact) => void;
+}
+
+export const ContactList: React.FC<ContactListProps> = ({
+  contacts,
+  onContactClick,
+}) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [organizationFilter, setOrganizationFilter] = useState<string>('');
 
-  // TODO: Implémenter la logique de récupération des données avec SWR/Supabase
-  const contacts: Contact[] = [];
-
-  const handleRowClick = (id: string) => {
-    router.push(`/contacts/${id}`);
-  };
+  const filteredContacts = contacts.filter(contact => {
+    const searchLower = searchQuery.toLowerCase();
+    return (
+      contact.first_name.toLowerCase().includes(searchLower) ||
+      contact.last_name.toLowerCase().includes(searchLower) ||
+      contact.organization_name.toLowerCase().includes(searchLower) ||
+      contact.phone.includes(searchQuery)
+    );
+  });
 
   return (
-    <div className="mt-4">
-      {/* Barre de recherche et filtres */}
-      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-            <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" aria-hidden="true" />
-          </div>
-          <input
-            type="text"
-            className="block w-full rounded-md border-0 py-1.5 pl-10 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-orbit-600 sm:text-sm sm:leading-6"
-            placeholder="Rechercher un contact..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+    <div className="space-y-4">
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <Search className="h-5 w-5 text-moon-gray" />
         </div>
-        <select
-          className="rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-orbit-600 sm:text-sm sm:leading-6"
-          value={organizationFilter}
-          onChange={(e) => setOrganizationFilter(e.target.value)}
-        >
-          <option value="">Toutes les entreprises</option>
-          {/* TODO: Ajouter les entreprises dynamiquement */}
-        </select>
+        <input
+          type="text"
+          className="block w-full pl-10 pr-3 py-2 border border-white/10 rounded-lg bg-deep-space text-star-white placeholder-moon-gray focus:outline-none focus:border-nebula-purple"
+          placeholder="Rechercher un contact..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
       </div>
 
-      {/* Tableau */}
-      <div className="mt-4 flow-root">
-        <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-          <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-            <div className="overflow-hidden shadow ring-1 ring-black ring-opacity-5 sm:rounded-lg">
-              <table className="min-w-full divide-y divide-gray-300">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-gray-900 sm:pl-6">
-                      Nom
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Entreprise
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Téléphone
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Email
-                    </th>
-                    <th scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-gray-900">
-                      Rôle
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200 bg-white">
-                  {contacts.map((contact) => (
-                    <tr
-                      key={contact.id}
-                      onClick={() => handleRowClick(contact.id)}
-                      className="cursor-pointer hover:bg-gray-50"
-                    >
-                      <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">
-                        {contact.firstName} {contact.lastName}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">
-                        {contact.organization.name}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{contact.phone}</td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{contact.email}</td>
-                      <td className="whitespace-nowrap px-3 py-4 text-sm text-gray-500">{contact.role}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+      <div className="bg-deep-space rounded-xl border border-white/10 overflow-hidden">
+        <table className="min-w-full divide-y divide-white/10">
+          <thead className="bg-space-black">
+            <tr>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-moon-gray uppercase tracking-wider">
+                Contact
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-moon-gray uppercase tracking-wider">
+                Entreprise
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-moon-gray uppercase tracking-wider">
+                Rôle
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-moon-gray uppercase tracking-wider">
+                Téléphone
+              </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-moon-gray uppercase tracking-wider">
+                Email
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/10">
+            {filteredContacts.map((contact) => (
+              <motion.tr
+                key={contact.id}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="hover:bg-space-black/50 cursor-pointer transition-colors"
+                onClick={() => onContactClick(contact)}
+              >
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <div className="w-8 h-8 rounded-lg bg-nebula-purple/20 flex items-center justify-center mr-3">
+                      <User className="text-nebula-purple" size={16} />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium text-star-white">
+                        {contact.first_name} {contact.last_name}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-moon-gray">{contact.organization_name}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-moon-gray">{contact.role}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-moon-gray">{contact.phone}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-moon-gray">{contact.email}</div>
+                </td>
+              </motion.tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
-} 
+}; 

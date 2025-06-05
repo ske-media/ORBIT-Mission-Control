@@ -46,10 +46,10 @@ const Sidebar: React.FC = () => {
   
   const navItems = [
     { 
-      path: '/dashboard', 
+      path: '/', 
       icon: <LayoutDashboard size={24} />, 
       label: 'Tableau de bord',
-      activePattern: /^\/dashboard/ 
+      activePattern: /^\/$|^\/dashboard/ 
     },
     { 
       path: '/projects', 
@@ -62,12 +62,6 @@ const Sidebar: React.FC = () => {
       icon: <Users size={24} />, 
       label: 'Clients',
       activePattern: /^\/clients/ 
-    },
-    { 
-      path: '/inbox', 
-      icon: <Inbox size={24} />, 
-      label: 'Inbox',
-      activePattern: /^\/inbox/ 
     },
     { 
       path: '/notifications', 

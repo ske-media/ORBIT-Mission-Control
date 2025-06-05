@@ -26,61 +26,36 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
   onClose,
   onOrganizationCreated,
 }) => {
+  console.log('Modal props:', { isOpen, onClose, onOrganizationCreated });
+  
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     industry: '',
-    size: {
-      employee_count: '',
-      revenue: '',
-    },
-    location: {
-      address: '',
-      city: '',
-      country: '',
-    },
-    website: '',
+    company_size: '',
+    company_address: '',
+    company_website: '',
     primary_language: 'FR' as 'FR' | 'EN',
     timezone: 'Europe/Paris',
     status: 'prospect' as Organization['status'],
     acquisition_source: '',
     tags: [] as string[],
+    notes: ''
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    if (name.includes('.')) {
-      const [parent, child] = name.split('.');
-      setFormData(prev => {
-        const parentObj = prev[parent as keyof typeof prev] as Record<string, string>;
-        return {
-          ...prev,
-          [parent]: {
-            ...parentObj,
-            [child]: value,
-          },
-        };
-      });
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('Submitting form:', formData);
     setLoading(true);
 
     try {
-      // Convertir les champs numériques
-      const dataToSubmit = {
-        ...formData,
-        size: {
-          employee_count: formData.size.employee_count ? parseInt(formData.size.employee_count) : undefined,
-          revenue: formData.size.revenue ? parseInt(formData.size.revenue) : undefined,
-        },
-      };
-
-      await createOrganization(dataToSubmit);
+      const result = await createOrganization(formData);
+      console.log('Organization created:', result);
       onOrganizationCreated();
       toast.success('Organisation créée avec succès !');
     } catch (error) {
@@ -91,59 +66,53 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    console.log('Modal not open, returning null');
+    return null;
+  }
 
+  console.log('Rendering modal');
   return (
-    <div className="fixed inset-0 bg-space-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-space-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-deep-space rounded-xl w-full max-w-2xl border border-white/10 shadow-xl"
+        className="bg-deep-space rounded-xl w-full max-w-2xl border border-white/10 shadow-xl my-8"
       >
         <div className="p-6 border-b border-white/10">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-orbitron text-star-white">Nouvelle organisation</h2>
-            <button
-              onClick={onClose}
-              className="text-moon-gray hover:text-star-white transition-colors"
-              disabled={loading}
-            >
-              <X size={24} />
-            </button>
-          </div>
+          <h2 className="text-xl font-orbitron text-star-white">Nouvelle Organisation</h2>
+          <p className="text-sm text-moon-gray mt-1">Créez une nouvelle organisation dans votre CRM</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Informations générales */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[calc(100vh-200px)] overflow-y-auto">
+          {/* Informations de base */}
           <div className="space-y-4">
-            <h3 className="text-lg font-orbitron text-star-white mb-4">Informations générales</h3>
+            <h3 className="text-lg font-orbitron text-star-white mb-4">Informations de base</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-moon-gray mb-1.5">
-                  Nom de l'organisation <span className="text-red-alert">*</span>
+                  Nom de l'organisation
                 </label>
                 <Input
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
                   placeholder="ex: Acme Corp"
-                  required
                   disabled={loading}
                 />
               </div>
 
               <div>
                 <label className="block text-sm text-moon-gray mb-1.5">
-                  Secteur d'activité <span className="text-red-alert">*</span>
+                  Secteur d'activité
                 </label>
                 <Input
                   name="industry"
                   value={formData.industry}
                   onChange={handleInputChange}
                   placeholder="ex: Technologie"
-                  required
                   disabled={loading}
                 />
               </div>
@@ -153,9 +122,8 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
                   Nombre d'employés
                 </label>
                 <Input
-                  name="size.employee_count"
-                  type="number"
-                  value={formData.size.employee_count}
+                  name="company_size"
+                  value={formData.company_size}
                   onChange={handleInputChange}
                   placeholder="ex: 50"
                   disabled={loading}
@@ -164,16 +132,20 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
 
               <div>
                 <label className="block text-sm text-moon-gray mb-1.5">
-                  Chiffre d'affaires (€)
+                  Statut
                 </label>
-                <Input
-                  name="size.revenue"
-                  type="number"
-                  value={formData.size.revenue}
+                <select
+                  name="status"
+                  value={formData.status}
                   onChange={handleInputChange}
-                  placeholder="ex: 1000000"
                   disabled={loading}
-                />
+                  className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-star-white focus:outline-none focus:border-nebula-purple disabled:opacity-50"
+                >
+                  <option value="prospect">Prospect</option>
+                  <option value="active">Client actif</option>
+                  <option value="inactive">Inactif</option>
+                  <option value="lost">Perdu</option>
+                </select>
               </div>
             </div>
           </div>
@@ -188,36 +160,10 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
                   Adresse
                 </label>
                 <Input
-                  name="location.address"
-                  value={formData.location.address}
+                  name="company_address"
+                  value={formData.company_address}
                   onChange={handleInputChange}
                   placeholder="ex: 123 rue de la Paix"
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-moon-gray mb-1.5">
-                  Ville
-                </label>
-                <Input
-                  name="location.city"
-                  value={formData.location.city}
-                  onChange={handleInputChange}
-                  placeholder="ex: Paris"
-                  disabled={loading}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm text-moon-gray mb-1.5">
-                  Pays
-                </label>
-                <Input
-                  name="location.country"
-                  value={formData.location.country}
-                  onChange={handleInputChange}
-                  placeholder="ex: France"
                   disabled={loading}
                 />
               </div>
@@ -227,9 +173,9 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
                   Site web
                 </label>
                 <Input
-                  name="website"
+                  name="company_website"
                   type="url"
-                  value={formData.website}
+                  value={formData.company_website}
                   onChange={handleInputChange}
                   placeholder="ex: https://www.example.com"
                   disabled={loading}
@@ -284,57 +230,78 @@ export const CreateOrganizationModal: React.FC<CreateOrganizationModalProps> = (
 
               <div>
                 <label className="block text-sm text-moon-gray mb-1.5">
-                  Statut
-                </label>
-                <Select
-                  value={formData.status}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, status: value as Organization['status'] }))}
-                  disabled={loading}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un statut" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="prospect">Prospect</SelectItem>
-                    <SelectItem value="active">Client actif</SelectItem>
-                    <SelectItem value="inactive">Client inactif</SelectItem>
-                    <SelectItem value="lost">Perdu</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-sm text-moon-gray mb-1.5">
                   Source d'acquisition
                 </label>
                 <Input
                   name="acquisition_source"
                   value={formData.acquisition_source}
                   onChange={handleInputChange}
-                  placeholder="ex: Réseaux sociaux"
+                  placeholder="ex: LinkedIn, Bouche à oreille..."
                   disabled={loading}
                 />
               </div>
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
-            <Button
-              variant="ghost"
-              onClick={onClose}
-              disabled={loading}
-            >
-              Annuler
-            </Button>
-            <Button
-              type="submit"
-              disabled={loading || !formData.name || !formData.industry}
-            >
-              {loading ? 'Création...' : 'Créer l\'organisation'}
-            </Button>
+          {/* Informations supplémentaires */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-orbitron text-star-white mb-4">Informations supplémentaires</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-moon-gray mb-1.5">
+                  Tags
+                </label>
+                <Input
+                  name="tags"
+                  value={formData.tags.join(', ')}
+                  onChange={(e) => {
+                    const tags = e.target.value.split(',').map(tag => tag.trim()).filter(Boolean);
+                    setFormData(prev => ({ ...prev, tags }));
+                  }}
+                  placeholder="ex: tech, startup, finance (séparés par des virgules)"
+                  disabled={loading}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm text-moon-gray mb-1.5">
+                Notes
+              </label>
+              <textarea
+                name="notes"
+                value={formData.notes}
+                onChange={handleInputChange}
+                placeholder="Informations complémentaires..."
+                disabled={loading}
+                className="w-full h-32 px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-star-white placeholder-moon-gray/50 focus:outline-none focus:border-nebula-purple disabled:opacity-50"
+              />
+            </div>
           </div>
         </form>
+
+        <div className="p-6 border-t border-white/10 flex justify-end gap-3">
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="border-white/10 hover:bg-white/5"
+          >
+            Annuler
+          </Button>
+          <Button
+            type="submit"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="bg-nebula-purple hover:bg-nebula-purple/90"
+          >
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              'Créer l\'organisation'
+            )}
+          </Button>
+        </div>
       </motion.div>
     </div>
   );

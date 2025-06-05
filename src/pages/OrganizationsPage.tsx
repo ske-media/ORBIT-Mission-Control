@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Search, Filter, Building2, Users, Calendar, Tag } from 'lucide-react';
+import { Plus, Search, Filter, Building2, Users, Calendar, Tag, Globe } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
@@ -29,6 +29,18 @@ const OrganizationsPage: React.FC = () => {
 
   const { user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key === 'n' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setShowCreateModal(true);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   const fetchOrganizations = useCallback(async () => {
     setLoading(true);
@@ -70,6 +82,11 @@ const OrganizationsPage: React.FC = () => {
     navigate(`/organizations/${organization.id}`);
   };
 
+  const handleCreateClick = useCallback(() => {
+    console.log('Create button clicked');
+    setShowCreateModal(true);
+  }, []);
+
   if (loading && organizations.length === 0) {
     return (
       <div className="p-8 flex items-center justify-center min-h-[calc(100vh-10rem)]">
@@ -99,12 +116,23 @@ const OrganizationsPage: React.FC = () => {
           <h1 className="text-3xl font-orbitron text-star-white mb-2">Organisations</h1>
           <p className="text-moon-gray">Gérez vos clients et prospects</p>
         </div>
-        <Button
-          onClick={() => setShowCreateModal(true)}
-        >
-          <Plus size={16} className="mr-2" />
-          Nouvelle organisation
-        </Button>
+        <div className="flex gap-4">
+          <button
+            type="button"
+            onClick={handleCreateClick}
+            className="bg-nebula-purple text-white px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-nebula-purple/90"
+          >
+            <Plus size={16} />
+            Nouvelle organisation
+          </button>
+          <button
+            type="button"
+            onClick={() => alert('Test')}
+            className="bg-red-500 text-white px-4 py-2 rounded-lg"
+          >
+            Test
+          </button>
+        </div>
       </div>
 
       {/* Search & Filters */}
@@ -184,61 +212,87 @@ const OrganizationsPage: React.FC = () => {
           </motion.div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredOrganizations.map((org) => (
-            <div
+            <motion.div
               key={org.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3 }}
+              className="bg-deep-space rounded-xl border border-white/10 p-6 hover:border-nebula-purple/50 transition-colors cursor-pointer"
               onClick={() => handleOrganizationClick(org)}
-              className="bg-deep-space border border-white/10 rounded-xl p-4 cursor-pointer hover:border-nebula-purple/50 transition-colors"
             >
-              <div className="flex items-start justify-between mb-3">
-                <h3 className="text-lg font-orbitron text-star-white">{org.name}</h3>
-                <span className={`px-2 py-1 rounded-full text-xs ${
-                  org.status === 'active' ? 'bg-green-500/20 text-green-500' :
-                  org.status === 'prospect' ? 'bg-blue-500/20 text-blue-500' :
-                  org.status === 'inactive' ? 'bg-yellow-500/20 text-yellow-500' :
-                  'bg-red-500/20 text-red-500'
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-orbitron text-star-white mb-1">{org.name}</h3>
+                  <p className="text-sm text-moon-gray">{org.industry}</p>
+                </div>
+                <div className={`px-2 py-1 rounded text-xs font-medium ${
+                  org.status === 'active' ? 'bg-green-500/20 text-green-400' :
+                  org.status === 'prospect' ? 'bg-blue-500/20 text-blue-400' :
+                  org.status === 'inactive' ? 'bg-yellow-500/20 text-yellow-400' :
+                  'bg-red-500/20 text-red-400'
                 }`}>
                   {org.status === 'active' ? 'Client actif' :
                    org.status === 'prospect' ? 'Prospect' :
                    org.status === 'inactive' ? 'Inactif' : 'Perdu'}
-                </span>
-              </div>
-              <div className="space-y-2 text-sm text-moon-gray">
-                <div className="flex items-center gap-2">
-                  <Building2 size={14} />
-                  <span>{org.industry}</span>
                 </div>
-                {org.contacts && org.contacts.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Users size={14} />
-                    <span>{org.contacts.length} contact{org.contacts.length > 1 ? 's' : ''}</span>
+              </div>
+              
+              <div className="space-y-3">
+                {org.company_website && (
+                  <div className="flex items-center text-sm text-moon-gray">
+                    <Globe size={14} className="mr-2" />
+                    <a href={org.company_website} target="_blank" rel="noopener noreferrer" 
+                       className="hover:text-nebula-purple transition-colors"
+                       onClick={(e) => e.stopPropagation()}>
+                      {org.company_website}
+                    </a>
                   </div>
                 )}
-                {org.tags && org.tags.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <Tag size={14} />
-                    <span>{org.tags.join(', ')}</span>
+                
+                {org.company_address && (
+                  <div className="flex items-center text-sm text-moon-gray">
+                    <Building2 size={14} className="mr-2" />
+                    {org.company_address}
+                  </div>
+                )}
+
+                {org.company_size && (
+                  <div className="flex items-center text-sm text-moon-gray">
+                    <Users size={14} className="mr-2" />
+                    {org.company_size} employés
                   </div>
                 )}
               </div>
-            </div>
+
+              {org.tags && org.tags.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {org.tags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="px-2 py-1 bg-white/5 rounded text-xs text-moon-gray"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </motion.div>
           ))}
         </div>
       )}
 
       {/* Create Organization Modal */}
-      {showCreateModal && (
-        <CreateOrganizationModal
-          isOpen={showCreateModal}
-          onClose={() => setShowCreateModal(false)}
-          onOrganizationCreated={() => {
-            setShowCreateModal(false);
-            fetchOrganizations();
-            toast.success('Organisation créée avec succès !');
-          }}
-        />
-      )}
+      <CreateOrganizationModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onOrganizationCreated={() => {
+          setShowCreateModal(false);
+          fetchOrganizations();
+          toast.success('Organisation créée avec succès !');
+        }}
+      />
     </div>
   );
 };

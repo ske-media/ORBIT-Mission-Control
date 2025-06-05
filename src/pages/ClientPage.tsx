@@ -1,173 +1,230 @@
-import { useState } from 'react';
-import { Search, Plus, Building2, Users, Filter } from 'lucide-react';
-import Button from '../components/ui/Button';
-import Input from '../components/ui/Input';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../components/ui/DropdownMenu';
-import { getUnreadNotificationsCount } from '../lib/supabase-helpers';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
+import { Plus, Building2, Users } from 'lucide-react';
+import { Tab } from '@headlessui/react';
+import { toast } from 'sonner';
+import { useNavigate, useLocation } from 'react-router-dom';
+
+import Button from '@/components/ui/Button';
+import { CreateOrganizationModal } from '@/components/organizations/CreateOrganizationModal';
+import { CreateContactModal } from '@/components/contacts/CreateContactModal';
+import { OrganizationList } from '@/components/organizations/OrganizationList';
+import { ContactList } from '@/components/contacts/ContactList';
+import { supabase } from '@/lib/supabase';
+
+function classNames(...classes: string[]) {
+  return classes.filter(Boolean).join(' ');
+}
 
 interface Organization {
   id: string;
   name: string;
-  sector: string;
-  size: string;
-  address?: string;
-  website?: string;
-  mainLanguage: 'FR' | 'EN';
-  timezone: string;
-  status: 'prospect' | 'active' | 'inactive' | 'lost';
-  acquisitionSource?: string;
-  tags: string[];
+  email: string;
+  phone: string;
+  address: string;
+  type: string;
+  industry: string;
+  website: string;
+  notes: string;
   created_at: string;
-  updated_at: string;
 }
 
 interface Contact {
   id: string;
-  firstName: string;
-  lastName: string;
-  role?: string;
+  first_name: string;
+  last_name: string;
   email: string;
-  phone?: string;
-  preferredChannel: 'email' | 'phone' | 'whatsapp';
-  language?: string;
-  notes?: string;
+  phone: string;
+  role: string;
   organization_id: string;
+  organization_name: string;
+  preferred_language: 'FR' | 'EN';
+  notes: string;
   created_at: string;
-  updated_at: string;
 }
 
-export default function ClientPage() {
-  const [activeTab, setActiveTab] = useState<'organizations' | 'contacts'>('organizations');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('name');
+const ClientPage: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [showCreateOrgModal, setShowCreateOrgModal] = useState(false);
+  const [showCreateContactModal, setShowCreateContactModal] = useState(false);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // TODO: Implement data fetching with Supabase
-  const organizations: Organization[] = [];
-  const contacts: Contact[] = [];
+  useEffect(() => {
+    if (location.pathname === '/organizations') {
+      navigate('/clients');
+      return;
+    }
+    fetchOrganizations();
+    fetchContacts();
+  }, [location.pathname, navigate]);
 
-  const filteredOrganizations = organizations.filter(org => 
-    org.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-    (statusFilter === 'all' || org.status === statusFilter)
-  );
+  const fetchOrganizations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  const filteredContacts = contacts.filter(contact =>
-    `${contact.firstName} ${contact.lastName}`.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      if (error) throw error;
+      setOrganizations(data || []);
+    } catch (error) {
+      console.error('Error fetching organizations:', error);
+      toast.error('Erreur lors du chargement des organisations');
+    }
+  };
+
+  const fetchContacts = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select(`
+          *,
+          organization:organizations(name)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      
+      // Transform the data to match our Contact interface
+      const transformedContacts = data?.map(contact => ({
+        ...contact,
+        organization_name: contact.organization?.name || 'Sans organisation'
+      })) || [];
+      
+      setContacts(transformedContacts);
+    } catch (error) {
+      console.error('Error fetching contacts:', error);
+      toast.error('Erreur lors du chargement des contacts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOrganizationClick = (organization: Organization) => {
+    navigate(`/clients/organizations/${organization.id}`);
+  };
+
+  const handleContactClick = (contact: Contact) => {
+    navigate(`/clients/contacts/${contact.id}`);
+  };
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold text-star-white">Gestion des Clients</h1>
-        <Button 
-          onClick={() => {/* TODO: Implement add new */}}
-          className="bg-nebula-purple hover:bg-nebula-purple/80"
-        >
-          <Plus className="w-4 h-4 mr-2" />
-          {activeTab === 'organizations' ? 'Nouvelle Organisation' : 'Nouveau Contact'}
-        </Button>
-      </div>
-
-      <div className="flex space-x-4 mb-6">
-        <button
-          onClick={() => setActiveTab('organizations')}
-          className={`flex items-center px-4 py-2 rounded-lg ${
-            activeTab === 'organizations'
-              ? 'bg-deep-space text-star-white'
-              : 'text-moon-gray hover:bg-deep-space/50'
-          }`}
-        >
-          <Building2 className="w-5 h-5 mr-2" />
-          Organisations
-        </button>
-        <button
-          onClick={() => setActiveTab('contacts')}
-          className={`flex items-center px-4 py-2 rounded-lg ${
-            activeTab === 'contacts'
-              ? 'bg-deep-space text-star-white'
-              : 'text-moon-gray hover:bg-deep-space/50'
-          }`}
-        >
-          <Users className="w-5 h-5 mr-2" />
-          Contacts
-        </button>
-      </div>
-
-      <div className="flex space-x-4 mb-6">
-        <div className="flex-1">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-moon-gray" />
-            <Input
-              type="text"
-              placeholder="Rechercher..."
-              value={searchQuery}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-              className="pl-10 bg-deep-space border-nebula-purple text-star-white"
-            />
-          </div>
+    <div className="p-8">
+      <div className="flex justify-between items-start mb-8">
+        <div>
+          <h1 className="text-3xl font-orbitron text-star-white mb-2">Clients</h1>
+          <p className="text-moon-gray">Gérez vos organisations et contacts</p>
         </div>
-        {activeTab === 'organizations' && (
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px] bg-deep-space border-nebula-purple text-star-white">
-              <SelectValue placeholder="Filtrer par statut" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous les statuts</SelectItem>
-              <SelectItem value="prospect">Prospect</SelectItem>
-              <SelectItem value="active">Actif</SelectItem>
-              <SelectItem value="inactive">Inactif</SelectItem>
-              <SelectItem value="lost">Perdu</SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className="bg-deep-space border-nebula-purple text-star-white">
-              <Filter className="w-4 h-4 mr-2" />
-              Trier par
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            <DropdownMenuItem onClick={() => setSortBy('name')}>Nom</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy('created_at')}>Date de création</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy('status')}>Statut</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {activeTab === 'organizations' ? (
-          filteredOrganizations.map((org) => (
-            <Card key={org.id} className="bg-deep-space border-nebula-purple">
-              <CardHeader>
-                <CardTitle className="text-star-white">{org.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-moon-gray">Secteur: {org.sector}</p>
-                <p className="text-moon-gray">Taille: {org.size}</p>
-                <p className="text-moon-gray">Statut: {org.status}</p>
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          filteredContacts.map((contact) => (
-            <Card key={contact.id} className="bg-deep-space border-nebula-purple">
-              <CardHeader>
-                <CardTitle className="text-star-white">
-                  {contact.firstName} {contact.lastName}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-moon-gray">Rôle: {contact.role}</p>
-                <p className="text-moon-gray">Email: {contact.email}</p>
-                <p className="text-moon-gray">Téléphone: {contact.phone}</p>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+      <Tab.Group>
+        <Tab.List className="flex space-x-1 rounded-xl bg-deep-space p-1 mb-6">
+          <Tab
+            className={({ selected }) =>
+              classNames(
+                'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
+                'ring-white/60 ring-offset-2 ring-offset-space-black focus:outline-none focus:ring-2',
+                selected
+                  ? 'bg-nebula-purple text-star-white shadow'
+                  : 'text-moon-gray hover:bg-white/[0.12] hover:text-star-white'
+              )
+            }
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Building2 size={16} />
+              Organisations
+            </div>
+          </Tab>
+          <Tab
+            className={({ selected }) =>
+              classNames(
+                'w-full rounded-lg py-2.5 text-sm font-medium leading-5',
+                'ring-white/60 ring-offset-2 ring-offset-space-black focus:outline-none focus:ring-2',
+                selected
+                  ? 'bg-nebula-purple text-star-white shadow'
+                  : 'text-moon-gray hover:bg-white/[0.12] hover:text-star-white'
+              )
+            }
+          >
+            <div className="flex items-center justify-center gap-2">
+              <Users size={16} />
+              Contacts
+            </div>
+          </Tab>
+        </Tab.List>
+
+        <Tab.Panels>
+          <Tab.Panel>
+            <div className="flex justify-end mb-6">
+              <Button
+                onClick={() => setShowCreateOrgModal(true)}
+                className="bg-nebula-purple hover:bg-nebula-purple/90"
+              >
+                <Plus size={16} className="mr-2" />
+                Nouvelle organisation
+              </Button>
+            </div>
+            {loading ? (
+              <div className="flex justify-center items-center h-64">
+                <div className="w-8 h-8 border-2 border-nebula-purple border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <OrganizationList
+                organizations={organizations}
+                onOrganizationClick={handleOrganizationClick}
+              />
+            )}
+          </Tab.Panel>
+
+          <Tab.Panel>
+            <div className="flex justify-end mb-6">
+              <Button
+                onClick={() => setShowCreateContactModal(true)}
+                className="bg-nebula-purple hover:bg-nebula-purple/90"
+              >
+                <Plus size={16} className="mr-2" />
+                Nouveau contact
+              </Button>
+            </div>
+            {loading ? (
+              <div className="flex justify-center items-center h-64">
+                <div className="w-8 h-8 border-2 border-nebula-purple border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <ContactList
+                contacts={contacts}
+                onContactClick={handleContactClick}
+              />
+            )}
+          </Tab.Panel>
+        </Tab.Panels>
+      </Tab.Group>
+
+      {/* Modals */}
+      <CreateOrganizationModal
+        isOpen={showCreateOrgModal}
+        onClose={() => setShowCreateOrgModal(false)}
+        onOrganizationCreated={() => {
+          setShowCreateOrgModal(false);
+          fetchOrganizations();
+          toast.success('Organisation créée avec succès !');
+        }}
+      />
+
+      <CreateContactModal
+        isOpen={showCreateContactModal}
+        onClose={() => setShowCreateContactModal(false)}
+        onContactCreated={() => {
+          setShowCreateContactModal(false);
+          fetchContacts();
+          toast.success('Contact créé avec succès !');
+        }}
+      />
     </div>
   );
-} 
+};
+
+export default ClientPage; 

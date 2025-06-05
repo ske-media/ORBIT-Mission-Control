@@ -20,6 +20,7 @@ export type OrganizationProject = Database['public']['Tables']['organization_pro
 export type Ticket = Database['public']['Tables']['tickets']['Row'];
 export type Notification = Database['public']['Tables']['notifications']['Row'];
 export type Project = Database['public']['Tables']['projects']['Row'];
+export type UserType = Database['public']['Tables']['users']['Row'];
 
 // Organization functions
 export const getOrganizations = async (): Promise<Organization[]> => {
@@ -35,7 +36,19 @@ export const getOrganizations = async (): Promise<Organization[]> => {
 export const createOrganization = async (organization: Omit<Organization, 'id' | 'created_at' | 'updated_at'>): Promise<Organization> => {
   const { data, error } = await supabase
     .from('organizations')
-    .insert([organization])
+    .insert([{
+      name: organization.name,
+      industry: organization.industry,
+      company_size: organization.company_size,
+      company_address: organization.company_address,
+      company_website: organization.company_website,
+      primary_language: organization.primary_language,
+      timezone: organization.timezone,
+      status: organization.status,
+      acquisition_source: organization.acquisition_source,
+      tags: organization.tags,
+      notes: organization.notes
+    }])
     .select()
     .single();
 
@@ -393,4 +406,100 @@ export const unarchiveProject = async (projectId: string): Promise<{ success: bo
     console.error('Erreur lors du désarchivage du projet:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Erreur lors du désarchivage du projet' };
   }
+};
+
+export const addProjectMember = async (projectId: string, userId: string, role: 'owner' | 'editor' | 'viewer' = 'editor'): Promise<ProjectMemberWithUser> => {
+  const { data, error } = await supabase
+    .from('project_members')
+    .insert([{
+      project_id: projectId,
+      user_id: userId,
+      role: role,
+      created_at: new Date().toISOString()
+    }])
+    .select(`
+      *,
+      users (
+        id,
+        email,
+        full_name
+      )
+    `)
+    .single();
+
+  if (error) throw error;
+  return data;
+};
+
+export const updateProjectMemberRole = async (projectId: string, userId: string, newRole: 'owner' | 'editor' | 'viewer'): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { error } = await supabase
+      .from('project_members')
+      .update({ role: newRole })
+      .eq('project_id', projectId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour du rôle:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Erreur lors de la mise à jour du rôle' 
+    };
+  }
+};
+
+export const removeProjectMember = async (projectId: string, userId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('project_members')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+};
+
+export const getUsersToInvite = async (projectId: string, searchTerm: string): Promise<UserType[]> => {
+  // D'abord, récupérer les IDs des membres actuels du projet
+  const { data: currentMembers, error: membersError } = await supabase
+    .from('project_members')
+    .select('user_id')
+    .eq('project_id', projectId);
+
+  if (membersError) throw membersError;
+
+  const currentMemberIds = currentMembers.map(m => m.user_id);
+
+  // Ensuite, rechercher les utilisateurs qui ne sont pas déjà membres
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('*')
+    .not('id', 'in', `(${currentMemberIds.join(',')})`)
+    .or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`)
+    .limit(10);
+
+  if (usersError) throw usersError;
+  return users || [];
+};
+
+export const getOrganizationProject = async (organizationId: string, projectId: string): Promise<OrganizationProject | null> => {
+  const { data, error } = await supabase
+    .from('organization_projects')
+    .select(`
+      *,
+      project_members (
+        user_id,
+        role
+      )
+    `)
+    .eq('organization_id', organizationId)
+    .eq('id', projectId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching organization project:', error);
+    throw error;
+  }
+  return data;
 }; 

@@ -3,41 +3,50 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Building2, Users, Calendar, Tag, Globe, Clock, Mail, Phone, MapPin, Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-
+import { supabase } from '@/lib/supabase';
 import Button from '@/components/ui/Button';
-import { getOrganization, Organization } from '@/lib/supabase';
-import { useAuth } from '@/contexts/AuthContext';
+
+interface Organization {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  type: string;
+  industry: string;
+  website: string;
+  notes: string;
+  created_at: string;
+}
 
 const OrganizationDetailsPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
-
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
-    const fetchOrganization = async () => {
-      if (!id) return;
-      
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getOrganization(id);
-        setOrganization(data);
-      } catch (error) {
-        console.error('Error fetching organization:', error);
-        toast.error('Erreur lors du chargement de l\'organisation');
-        setError(error instanceof Error ? error.message : 'Impossible de charger l\'organisation.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchOrganization();
   }, [id]);
+
+  const fetchOrganization = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      setOrganization(data);
+    } catch (error) {
+      console.error('Error fetching organization:', error);
+      toast.error('Erreur lors du chargement de l\'organisation');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!organization) return;
@@ -60,11 +69,11 @@ const OrganizationDetailsPage: React.FC = () => {
     );
   }
 
-  if (error || !organization) {
+  if (!organization) {
     return (
       <div className="p-8 text-center">
         <div className="p-4 inline-flex flex-col items-center bg-red-alert/10 text-red-alert border border-red-alert/20 rounded-lg gap-3">
-          <span>{error || 'Organisation non trouvée'}</span>
+          <span>Organisation non trouvée</span>
           <Button variant="outline" size="sm" onClick={() => navigate('/organizations')}>
             Retour aux organisations
           </Button>
@@ -123,247 +132,57 @@ const OrganizationDetailsPage: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Informations principales */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Description */}
-          <div className="bg-deep-space rounded-xl border border-white/10 p-6">
-            <h2 className="text-xl font-orbitron text-star-white mb-4">Description</h2>
-            <p className="text-moon-gray">
-              {organization.description || 'Aucune description disponible.'}
-            </p>
-          </div>
-
-          {/* Contacts */}
-          <div className="bg-deep-space rounded-xl border border-white/10 p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-orbitron text-star-white">Contacts</h2>
-              <Button
-                variant="ghost"
-                onClick={() => {/* TODO: Implémenter l'ajout de contact */}}
-              >
-                <Users size={16} className="mr-2" />
-                Ajouter un contact
-              </Button>
-            </div>
-            {organization.contacts && organization.contacts.length > 0 ? (
-              <div className="space-y-4">
-                {organization.contacts.map((contact) => (
-                  <div
-                    key={contact.id}
-                    className="flex items-start justify-between p-4 bg-space-black rounded-lg border border-white/5"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-orbitron text-star-white">
-                          {contact.first_name} {contact.last_name}
-                        </h3>
-                        {contact.is_primary && (
-                          <span className="px-2 py-0.5 rounded-full text-xs bg-nebula-purple/20 text-nebula-purple">
-                            Principal
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-moon-gray">
-                        <span>{contact.role}</span>
-                        {contact.email && (
-                          <>
-                            <span>•</span>
-                            <a
-                              href={`mailto:${contact.email}`}
-                              className="flex items-center gap-1 hover:text-star-white"
-                            >
-                              <Mail size={14} />
-                              {contact.email}
-                            </a>
-                          </>
-                        )}
-                        {contact.phone && (
-                          <>
-                            <span>•</span>
-                            <a
-                              href={`tel:${contact.phone}`}
-                              className="flex items-center gap-1 hover:text-star-white"
-                            >
-                              <Phone size={14} />
-                              {contact.phone}
-                            </a>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {/* TODO: Implémenter l'édition du contact */}}
-                      >
-                        <Edit2 size={14} />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {/* TODO: Implémenter la suppression du contact */}}
-                      >
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-moon-gray">
-                Aucun contact associé à cette organisation.
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-deep-space rounded-xl border border-white/10 p-6">
+          <h2 className="text-xl font-orbitron text-star-white mb-4">Informations</h2>
+          <div className="space-y-4">
+            {organization.email && (
+              <div className="flex items-center gap-3">
+                <Mail className="text-moon-gray" size={18} />
+                <span className="text-star-white">{organization.email}</span>
               </div>
             )}
-          </div>
-
-          {/* Projets */}
-          <div className="bg-deep-space rounded-xl border border-white/10 p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-orbitron text-star-white">Projets</h2>
-              <Button
-                variant="ghost"
-                onClick={() => {/* TODO: Implémenter l'ajout de projet */}}
-              >
-                <Calendar size={16} className="mr-2" />
-                Nouveau projet
-              </Button>
-            </div>
-            {organization.projects && organization.projects.length > 0 ? (
-              <div className="space-y-4">
-                {organization.projects.map((project) => (
-                  <div
-                    key={project.id}
-                    className="p-4 bg-space-black rounded-lg border border-white/5"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-orbitron text-star-white mb-1">{project.title}</h3>
-                        <p className="text-sm text-moon-gray mb-2">{project.description}</p>
-                        <div className="flex items-center gap-4 text-sm text-moon-gray">
-                          <div className="flex items-center gap-1">
-                            <Calendar size={14} />
-                            <span>
-                              {new Date(project.start_date).toLocaleDateString()} - 
-                              {project.end_date ? new Date(project.end_date).toLocaleDateString() : 'En cours'}
-                            </span>
-                          </div>
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${
-                            project.status === 'active' ? 'bg-green-500/20 text-green-500' :
-                            project.status === 'completed' ? 'bg-blue-500/20 text-blue-500' :
-                            project.status === 'on_hold' ? 'bg-yellow-500/20 text-yellow-500' :
-                            'bg-red-500/20 text-red-500'
-                          }`}>
-                            {project.status === 'active' ? 'En cours' :
-                             project.status === 'completed' ? 'Terminé' :
-                             project.status === 'on_hold' ? 'En pause' : 'Annulé'}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => navigate(`/projects/${project.id}`)}
-                        >
-                          Voir
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            {organization.phone && (
+              <div className="flex items-center gap-3">
+                <Phone className="text-moon-gray" size={18} />
+                <span className="text-star-white">{organization.phone}</span>
               </div>
-            ) : (
-              <div className="text-center py-8 text-moon-gray">
-                Aucun projet associé à cette organisation.
+            )}
+            {organization.address && (
+              <div className="flex items-center gap-3">
+                <MapPin className="text-moon-gray" size={18} />
+                <span className="text-star-white">{organization.address}</span>
+              </div>
+            )}
+            {organization.website && (
+              <div className="flex items-center gap-3">
+                <Globe className="text-moon-gray" size={18} />
+                <a
+                  href={organization.website}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-nebula-purple hover:text-nebula-purple/80"
+                >
+                  {organization.website}
+                </a>
               </div>
             )}
           </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Informations de contact */}
-          <div className="bg-deep-space rounded-xl border border-white/10 p-6">
-            <h2 className="text-xl font-orbitron text-star-white mb-4">Informations de contact</h2>
-            <div className="space-y-4">
-              {organization.website && (
-                <div className="flex items-center gap-2 text-moon-gray">
-                  <Globe size={16} />
-                  <a
-                    href={organization.website}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-star-white"
-                  >
-                    {organization.website}
-                  </a>
-                </div>
-              )}
-              {organization.location && (
-                <div className="flex items-center gap-2 text-moon-gray">
-                  <MapPin size={16} />
-                  <span>
-                    {[
-                      organization.location.address,
-                      organization.location.city,
-                      organization.location.country
-                    ].filter(Boolean).join(', ')}
-                  </span>
-                </div>
-              )}
-              {organization.timezone && (
-                <div className="flex items-center gap-2 text-moon-gray">
-                  <Clock size={16} />
-                  <span>{organization.timezone}</span>
-                </div>
-              )}
+        <div className="bg-deep-space rounded-xl border border-white/10 p-6">
+          <h2 className="text-xl font-orbitron text-star-white mb-4">Détails</h2>
+          <div className="space-y-4">
+            <div>
+              <span className="text-moon-gray">Secteur</span>
+              <p className="text-star-white">{organization.industry}</p>
             </div>
-          </div>
-
-          {/* Tags */}
-          {organization.tags && organization.tags.length > 0 && (
-            <div className="bg-deep-space rounded-xl border border-white/10 p-6">
-              <h2 className="text-xl font-orbitron text-star-white mb-4">Tags</h2>
-              <div className="flex flex-wrap gap-2">
-                {organization.tags.map((tag, index) => (
-                  <span
-                    key={index}
-                    className="px-2 py-1 rounded-full text-sm bg-nebula-purple/20 text-nebula-purple"
-                  >
-                    {tag}
-                  </span>
-                ))}
+            {organization.notes && (
+              <div>
+                <span className="text-moon-gray">Notes</span>
+                <p className="text-star-white whitespace-pre-wrap">{organization.notes}</p>
               </div>
-            </div>
-          )}
-
-          {/* Historique */}
-          <div className="bg-deep-space rounded-xl border border-white/10 p-6">
-            <h2 className="text-xl font-orbitron text-star-white mb-4">Historique</h2>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-2 h-2 rounded-full bg-nebula-purple mt-2"></div>
-                <div>
-                  <p className="text-sm text-star-white">Organisation créée</p>
-                  <p className="text-xs text-moon-gray">
-                    {new Date(organization.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-              {organization.updated_at && (
-                <div className="flex items-start gap-3">
-                  <div className="w-2 h-2 rounded-full bg-nebula-purple mt-2"></div>
-                  <div>
-                    <p className="text-sm text-star-white">Dernière modification</p>
-                    <p className="text-xs text-moon-gray">
-                      {new Date(organization.updated_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
